@@ -159,7 +159,16 @@ module hart #(
         .rs2(rs2),
         .rd(rd),
         .funct3(funct3),
-        .funct7(funct7)
+        .funct7(funct7),
+        .immediate(immediate),
+        .format(format),
+        .alu_op(alu_op),
+        .branch_op(branch_op),
+        .mem_write(mem_write),
+        .reg_write_source_op(reg_write_source_op),
+        .reg_write(reg_write),
+        .alu_src_op(alu_src_op),
+        .pc_src_op(pc_src_op)
     );
 
     /** Execute **/

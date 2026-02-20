@@ -15,27 +15,48 @@ module decode #(
 	output wire [4:0] rd,
 	output wire [2:0] funct3,
 	output wire [6:0] funct7,
-	output wire [31:0] o_immediate 
+	output wire [31:0] o_immediate,
+	output wire [5:0] o_format,
+	output wire [2:0] alu_op,
+	output wire [2:0] branch_op,
+	output wire mem_write,
+	output wire [1:0] reg_write_source_op,
+	output wire reg_write,
+	output wire alu_src_op,
+	output wire pc_src_op
 );
 
+// parameters for instruction formats, used for readability. 
+localparam R_TYPE = 6'b000001;
+localparam I_TYPE = 6'b000010;
+localparam S_TYPE = 6'b000100;
+localparam B_TYPE = 6'b001000;
+localparam U_TYPE = 6'b010000;
+localparam J_TYPE = 6'b100000;
 
+// One hot decoder for instruction format. 
+assign o_format = (opcode == 7'b0110011) ? R_TYPE : 
+	(opcode == 7'b0010011 || opcode == 7'b0000011 || opcode == 7'b1100111) ? I_TYPE : 
+	(opcode == 7'b0100011) ? S_TYPE : 
+	(opcode == 7'b1100011) ? B_TYPE : 
+	(opcode == 7'b0110111 || opcode == 7'b0010111) ? U_TYPE : 
+	(opcode == 7'b1101111) ? J_TYPE : 6'b0; // Default to 0, hopefully don't happen. 
 
 assign opcode = i_inst[6:0]; // Opcode is always used
 
-assign rd = (i_inst[5:0] == 6'b100011) 
+assign rd = (o_format == S_TYPE || o_format == B_TYPE) 
 	? 5'b0 : i_inst[11:7]; // Not S or B i_instuction
 
-assign funct3 = (i_inst[4:0] == (5'b10111 || 5'b01111)) 
+assign funct3 = (o_format == U_TYPE || o_format == J_TYPE) 
 	? 3'b0 : i_inst[14:12] ; // Not U or J i_instuction
 
-assign i_rs1_raddr = (i_inst[4:0] == (5'b10111 || 5'b00111)) 
+assign i_rs1_raddr = (o_format == U_TYPE || o_format == J_TYPE) 
 	? 5'b0 : i_inst[19:15]; // Not U or J i_instuction
 
-assign i_rs2_raddr = (i_inst[4:0] == (5'b10111 || 5'b00111) || 
-	i_inst[6:0] == (7'b0010011 || 7'b0000011 || 7'b1100111)) 
+assign i_rs2_raddr = (o_format == U_TYPE || o_format == J_TYPE || o_format == I_TYPE) 
 	? 5'b0 : i_inst[24:20]; // Not U, J, or I i_instuction
 
-assign funct7 = (i_inst[6:0] == 7'b0110011)
+assign funct7 = (o_format == R_TYPE)
 	? i_inst[31:25] : 7'b0; // Only R-type i_instuctions use funct7
 
 // Control Module
@@ -43,12 +64,19 @@ control i_control (
 	.opcode(opcode),
 	.funct3(funct3),
 	.funct7(funct7),
-	.o_format(i_format)
+	.o_format(o_format),
+	.alu_op(alu_op),
+	.branch_op(branch_op),
+	.mem_write(mem_write),
+	.reg_write_source_op(reg_write_source_op),
+	.reg_write(reg_write),
+	.alu_src_op(alu_src_op),
+	.pc_src_op(pc_src_op)	
 );
 
 
 
-// Also instantiate the register file and immediate generator here
+// Instantiate the register file
 rf i_rf (
 	.clk(clk),
 	.rst(rst),
@@ -61,9 +89,10 @@ rf i_rf (
 	.o_rs2_rdata(o_rs2_rdata)
 );
 
+// Link immediate generator here as well
 imm i_imm (
 	.i_inst(i_inst),
-	.i_format(i_format),
+	.i_format(o_format),
 	.o_immediate(o_immediate)
 );
 
