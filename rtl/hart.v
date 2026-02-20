@@ -138,16 +138,13 @@ module hart #(
     // Piece of advice from people who have taken the class before, split into a bunch of small subfiles
     // So most of the code is probably just connecting all the subfiles
 
-    /** Control module **/
-    
-
 
     /** Instruction Fetch **/
     fetch i_fetch (
         .clk(clk),
         .rst_n(rst_n),
-        .instruction_in(instruction_in),
-        .instruction_out(instruction_out)
+        .address_in(address_in), 
+        .o_mem_raddr(o_imem_raddr)
     );
 
 
@@ -156,7 +153,7 @@ module hart #(
     decode i_decode (
         .clk(clk),
         .rst(rst),
-        .instr(instr),
+        .instr(i_imem_rdata),
         .opcode(opcode),
         .rs1(rs1),
         .rs2(rs2),

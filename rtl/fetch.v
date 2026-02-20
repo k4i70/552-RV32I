@@ -3,8 +3,8 @@ module fetch #(
 )(
 	input wire clk;
 	input wire rst_n;
-	input wire [31:0] instruction_in;
-	output reg [31:0] instruction_out;
+	input wire [31:0] address_in, 
+	output wire [31:0] o_mem_raddr;
 );
 
 
