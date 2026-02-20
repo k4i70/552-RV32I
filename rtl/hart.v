@@ -172,10 +172,29 @@ module hart #(
     );
 
     /** Execute **/
+    execute i_execute (
+        .op(alu_op)
+        .alu_src_op(alu_src_op),
+        .rs1_data(rs1_data),
+        .rs2_data(rs2_data),
+        .immediate(immediate),
+        .alu_result(alu_result)
+    );
 
 
 
     /** Memory Access **/
+    memoryAccess i_memoryAccess (
+        .clk(clk),
+        .rst_n(rst_n),
+        .mem_write(mem_write),
+        .alu_result(alu_result), 
+        .rs2_data(rs2_data),
+        .o_dmem_addr(o_dmem_addr), 
+        .o_dmem_wdata(o_dmem_wdata),
+        .dmem_ren(o_dmem_ren),
+        .dmem_wen(o_dmem_wen)
+    );
 
 
     /** Writeback **/

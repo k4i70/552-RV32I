@@ -44,7 +44,6 @@ module alu (
     // should be taken.
     output wire        o_slt
 );
-    // TODO: Fill in your implementation here.
 
     // Declare signed wire copies so they can be used for signed operations.
     wire signed [31:0] signed_op1 = i_op1;
