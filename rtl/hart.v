@@ -156,9 +156,12 @@ module hart #(
     wire [4:0] rs1_raddr;
     wire [4:0] rs2_raddr;
     wire [3:0] dmem_mask_base;
+    wire [31:0] load_data;
 
     wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
     wire reg_write_wb, jalr_op, alu_pc_op, mem_read;
+
+    assign funct3 = i_imem_rdata[14:12];
 
     
 
@@ -196,7 +199,7 @@ module hart #(
         .reg_write(reg_write),
         .alu_src_op(alu_src_op),
         .pc_src_op(pc_src_op),
-        .o_dmem_mask(o_dmem_mask),
+        .o_dmem_mask(dmem_mask_base),
         .i_sub(i_sub),
         .i_unsigned(i_unsigned),
         .i_arith(i_arith),
@@ -251,7 +254,7 @@ module hart #(
         .mem_read(mem_read),
         .funct3(funct3),
         .i_unsigned(i_unsigned),
-        .o_load_data(WriteData)
+        .o_load_data(load_data)
     );
 
 
@@ -262,7 +265,7 @@ module hart #(
         .PC(o_imem_raddr),
         .branch_out(branch_out),
         .ALUResult(alu_result),
-        .ReadData(WriteData),
+        .ReadData(load_data),
         .MemtoReg(reg_write_source_op),
         .pc_src_op(pc_src_op),
         .rd_out(rd_out),
@@ -276,7 +279,7 @@ module hart #(
     // Declare retire signals and connect with assigns
     assign o_retire_inst = i_imem_rdata;
     assign o_retire_trap = 1'b0; 
-    assign o_retire_halt = (i_imem_rdata == 32'b00000000000000000000000001110011); // Ebreak instruciton
+    assign o_retire_halt = (i_imem_rdata == 32'h00100073); // Ebreak instruction
     assign o_retire_rs1_raddr = rs1_raddr;
     assign o_retire_rs2_raddr = rs2_raddr;
     assign o_retire_rs1_rdata = rs1_data;

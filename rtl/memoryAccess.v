@@ -36,8 +36,7 @@ barrel_shifter i_barrel_shifter (
 
 assign o_dmem_wdata = wdata_shifted;
 
-// Using external interface for memory address
-assign o_dmem_addr = alu_result;
+// Address is already aligned above via {alu_result[31:2], 2'b00}
 
 wire [31:0] rdata_shifted;
 barrel_shifter i_barrel_shifter_rdata (
