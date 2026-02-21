@@ -149,6 +149,17 @@ module hart #(
     wire [31:0] rs2_data;
     wire [31:0] immediate;
     wire [31:0] alu_result;
+    wire [31:0] branch_out;
+    wire [31:0] WriteData;
+    wire [4:0] rd_out;
+    wire [31:0] mem_raddr;
+    wire [4:0] rs1_raddr;
+    wire [4:0] rs2_raddr;
+    wire [3:0] dmem_mask_base;
+
+    wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
+    wire reg_write_wb, jalr_op, alu_pc_op, mem_read;
+
     
 
 
@@ -160,16 +171,19 @@ module hart #(
 
     /** Instruction Fetch **/
     fetch i_fetch (
-        .clk(clk),
-        .rst_n(rst_n),
+        .i_clk(i_clk),
+        .i_rst(i_rst),
         .address_in(address_in), 
-        .o_mem_raddr(o_imem_raddr)
+        .o_mem_raddr(o_imem_raddr),
+        .o_retire_valid(o_retire_valid)
     );
 
 
 
     /** Instruction Decode **/
     decode i_decode (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
         .i_instr(i_imem_rdata),
         .opcode(opcode),
         .rd(rd),
@@ -187,7 +201,15 @@ module hart #(
         .i_unsigned(i_unsigned),
         .i_arith(i_arith),
         .o_rs1_rdata(rs1_data),
-        .o_rs2_rdata(rs2_data)
+        .o_rs2_rdata(rs2_data),
+        .reg_write_wb(reg_write_wb),
+        .i_rd_waddr(rd_out),
+        .i_rd_wdata(WriteData),
+        .rs1_raddr(rs1_raddr),
+        .rs2_raddr(rs2_raddr),
+        .jalr_op(jalr_op),
+        .alu_pc_op(alu_pc_op),
+        .mem_read(mem_read)
     );
         
 
@@ -206,15 +228,15 @@ module hart #(
         .i_unsigned(i_unsigned),
         .i_arith(i_arith),
         .branch_op(branch_op),
-        .branch_out(branch_out)
+        .branch_out(branch_out),
+        .jalr_op(jalr_op),
+        .alu_pc_op(alu_pc_op)
     );
 
 
 
     /** Memory Access **/
     memoryAccess i_memoryAccess (
-        .clk(clk),
-        .rst_n(rst_n),
         .mem_write(mem_write),
         .alu_result(alu_result), 
         .rs2_data(rs2_data),
@@ -222,8 +244,12 @@ module hart #(
         .o_dmem_wdata(o_dmem_wdata),
         .o_dmem_ren(o_dmem_ren),
         .o_dmem_wen(o_dmem_wen),
+        .i_dmem_rdata(i_dmem_rdata),
         .o_dmem_mask(o_dmem_mask),
-        .i_dmem_rdata(i_dmem_rdata)
+        .dmem_mask_base(dmem_mask_base),
+        .mem_read(mem_read),
+        .funct3(funct3),
+        .i_unsigned(i_unsigned)
     );
 
 
@@ -232,17 +258,31 @@ module hart #(
         .RegWrite(reg_write),
         .rd(rd),
         .PC(o_imem_raddr),
-        .Branch_out(branch_out),
+        .branch_out(branch_out),
         .ALUResult(alu_result),
         .ReadData(i_dmem_rdata),
         .MemtoReg(reg_write_source_op),
         .pc_src_op(pc_src_op),
-        .rd_out(i_rd_waddr),
+        .rd_out(rd_out),
         .WriteData(WriteData),
         .reg_write_wb(reg_write_wb),
-        .current_PC(address_in)
+        .current_PC(address_in),
+        .jalr_op(jalr_op)
     );
 
+
+    // Declare retire signals and connect with assigns
+    assign o_retire_inst = i_imem_rdata;
+    assign o_retire_trap = 1'b0; 
+    assign o_retire_halt = (i_imem_rdata == 32'b00000000000000000000000001110011); // Ebreak instruciton
+    assign o_retire_rs1_raddr = rs1_raddr;
+    assign o_retire_rs2_raddr = rs2_raddr;
+    assign o_retire_rs1_rdata = rs1_data;
+    assign o_retire_rs2_rdata = rs2_data;
+    assign o_retire_rd_waddr = rd_out;
+    assign o_retire_rd_wdata = WriteData;
+    assign o_retire_pc = o_imem_raddr;
+    assign o_retire_next_pc = address_in;
 
 
 endmodule

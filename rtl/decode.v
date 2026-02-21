@@ -1,13 +1,12 @@
 module decode #(
 	parameter RESET_ADDR = 32'h00000000
 ) (
-	input wire [4:0] i_rs1_raddr,
-	input wire [4:0] i_rs2_raddr,
-	input wire i_rd_wen, 
+	input wire i_clk,
+	input wire i_rst,
+	input wire reg_write_wb,
 	input wire [4:0] i_rd_waddr,
 	input wire [31:0] i_rd_wdata,
-	input wire [31:0] i_instr, 
-	input wire reg_write_wb,
+	input wire [31:0] i_instr,
 	output wire [31:0] o_rs1_rdata,
 	output wire [31:0] o_rs2_rdata,
 	output wire [6:0] opcode, 
@@ -21,11 +20,22 @@ module decode #(
 	output wire reg_write,
 	output wire alu_src_op,
 	output wire pc_src_op,
-	output wire [2:0] o_dmem_mask,
+	output wire [3:0] o_dmem_mask,
 	output wire i_sub,
 	output wire i_unsigned,
-	output wire i_arith
+	output wire i_arith,
+	output wire [4:0] rs1_raddr,
+	output wire [4:0] rs2_raddr,
+	output wire jalr_op,
+	output wire alu_pc_op,
+	output wire mem_read
 );
+
+// Immediate signals
+wire [2:0] funct3;
+wire [6:0] funct7;
+wire [4:0] i_rs1_raddr;
+wire [4:0] i_rs2_raddr;
 
 // parameters for instruction formats, used for readability. 
 localparam R_TYPE = 6'b000001;
@@ -57,8 +67,12 @@ assign i_rs1_raddr = (o_format == U_TYPE || o_format == J_TYPE)
 assign i_rs2_raddr = (o_format == U_TYPE || o_format == J_TYPE || o_format == I_TYPE) 
 	? 5'b0 : i_instr[24:20]; // Not U, J, or I i_instruction
 
-assign funct7 = (o_format == R_TYPE)
-	? i_instr[31:25] : 7'b0; // Only R-type i_instructions use funct7
+assign funct7 = (o_format == R_TYPE || o_format == I_TYPE)
+	? i_instr[31:25] : 7'b0; // Only R and I type instructions use funct7
+
+// These signals just exist so retire signals can read their values
+assign rs1_raddr = i_rs1_raddr;
+assign rs2_raddr = i_rs2_raddr;
 
 // Control Module
 control i_control (
@@ -76,12 +90,17 @@ control i_control (
 	.o_dmem_mask(o_dmem_mask),
 	.i_sub(i_sub),
 	.i_unsigned(i_unsigned),
-	.i_arith(i_arith)
+	.i_arith(i_arith),
+	.jalr_op(jalr_op),
+	.alu_pc_op(alu_pc_op),
+	.mem_read(mem_read)
 );
 
 
 // Instantiate the register file
 rf i_rf (
+	.i_clk(i_clk),
+	.i_rst(i_rst),
 	.i_rs1_raddr(i_rs1_raddr),
 	.i_rs2_raddr(i_rs2_raddr),
 	.i_rd_wen(reg_write_wb),

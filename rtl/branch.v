@@ -7,6 +7,9 @@ module branch (
 
     //input signals
     input wire [31:0] imm_in,
+    input wire jalr_op,
+    input wire alu_pc_op,
+    input wire [31:0] pc_in,
 
     //branch output signals
     output wire [31:0] branch_out
@@ -21,7 +24,8 @@ localparam BGEU = 3'b111;
 
 wire [2:0] opsel = branch_op[2:0];
 
-assign branch_out = (pc_src_op) ?  
+assign branch_out = (jalr_op) ? imm_in :
+    (pc_src_op) ?  
     ((branch_op[3] == 1'b0) ? (
     //Branching
     (opsel == BEQ && equal) ? imm_in :

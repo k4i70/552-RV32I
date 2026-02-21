@@ -57,10 +57,10 @@ module alu (
 
     // Shift left logical barrel shifter
     wire [31:0] sll1 = shamt[0] ? {i_op1[30:0], 1'b0} : i_op1;
-    wire [31:0] sll2 = shamt[1] ? {sll1[30:0], 2'b0} : sll1;
-    wire [31:0] sll4 = shamt[2] ? {sll2[30:0], 4'b0} : sll2;
-    wire [31:0] sll8 = shamt[3] ? {sll4[30:0], 8'b0} : sll4;
-    wire [31:0] sll16 = shamt[4] ? {sll8[30:0], 16'b0} : sll8;
+    wire [31:0] sll2 = shamt[1] ? {sll1[29:0], 2'b0} : sll1;
+    wire [31:0] sll4 = shamt[2] ? {sll2[27:0], 4'b0} : sll2;
+    wire [31:0] sll8 = shamt[3] ? {sll4[23:0], 8'b0} : sll4;
+    wire [31:0] sll16 = shamt[4] ? {sll8[15:0], 16'b0} : sll8;
 
 
     // Shift right logical barrel shifter
