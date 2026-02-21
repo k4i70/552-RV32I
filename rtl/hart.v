@@ -284,8 +284,8 @@ module hart #(
     assign o_retire_inst = i_imem_rdata;
     assign o_retire_trap = 1'b0; 
     assign o_retire_halt = (i_imem_rdata == 32'h00100073); // Ebreak instruction
-    assign o_retire_rs1_raddr = rs1_raddr;
-    assign o_retire_rs2_raddr = rs2_raddr;
+    assign o_retire_rs1_raddr = i_imem_rdata[19:15];
+    assign o_retire_rs2_raddr = i_imem_rdata[24:20];
     assign o_retire_rs1_rdata = rs1_data;
     assign o_retire_rs2_rdata = rs2_data;
     assign o_retire_rd_waddr = rd_out;
