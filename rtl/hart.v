@@ -192,8 +192,10 @@ module hart #(
         .rs2_data(rs2_data),
         .o_dmem_addr(o_dmem_addr), 
         .o_dmem_wdata(o_dmem_wdata),
-        .dmem_ren(o_dmem_ren),
-        .dmem_wen(o_dmem_wen)
+        .o_dmem_ren(o_dmem_ren),
+        .o_dmem_wen(o_dmem_wen),
+        .o_dmem_mask(o_dmem_mask),
+        .i_dmem_rdata(i_dmem_rdata)
     );
 
 

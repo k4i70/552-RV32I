@@ -9,7 +9,8 @@ module control (
 	output wire [1:0] reg_write_source_op,
 	output wire reg_write,
 	output wire alu_src_op,
-	output wire pc_src_op
+	output wire pc_src_op,
+	output wire [2:0] o_dmem_mask
 );
 
 // parameters for instruction formats, used for readability. 
@@ -50,6 +51,10 @@ assign alu_src_op = (o_format == R_TYPE) ? 1'b0 : 1'b1;
 // PC source logic
 // 0 for PC + 4, 1 to take the output from the branch addr
 assign pc_src_op = (o_format == B_TYPE || o_format == J_TYPE || opcode == 7'b1100111) ? 1'b1 : 1'b0;
+
+// Dmem mask logic
+assign o_dmem_mask = (o_format == S_TYPE) ? funct3 : 3'b0;
+
 
 
 endmodule
