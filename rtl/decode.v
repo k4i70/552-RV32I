@@ -55,15 +55,21 @@ assign o_format = (opcode == 7'b0110011) ? R_TYPE :
 
 assign opcode = i_instr[6:0]; // Opcode is always used
 
-assign rd = i_instr[11:7]; // Not S or B i_instruction
+assign rd = (o_format == S_TYPE || o_format == B_TYPE) 
+	? 5'b0 : i_instr[11:7]; // Not S or B i_instruction
 
-assign funct3 = i_instr[14:12] ; // Not U or J i_instruction
+assign funct3 = (o_format == U_TYPE || o_format == J_TYPE) 
+	? 3'b0 : i_instr[14:12] ; // Not U or J i_instruction
 
-assign i_rs1_raddr = i_instr[19:15]; // Not U or J i_instruction
+assign i_rs1_raddr = (o_format == U_TYPE || o_format == J_TYPE) 
+	? 5'b0 : i_instr[19:15]; // Not U or J i_instruction
 
-assign i_rs2_raddr = i_instr[24:20]; // Not U or J i_instruction
+assign i_rs2_raddr = (o_format == U_TYPE || o_format == J_TYPE || o_format == I_TYPE) 
+	? 5'b0 : i_instr[24:20]; // Only R type has rs2
 
-assign funct7 = i_instr[31:25]; // Only R and I type instructions use funct7
+assign funct7 = (o_format == R_TYPE || o_format == I_TYPE)
+	? i_instr[31:25] : 7'b0; // Only R and I type instructions use funct7
+
 
 // These signals just exist so retire signals can read their values
 assign rs1_raddr = i_rs1_raddr;
