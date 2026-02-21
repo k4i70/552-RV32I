@@ -132,6 +132,25 @@ module hart #(
 );
     // Fill in your implementation here.
 
+    // Intermediate signals
+    wire [6:0] opcode;
+    wire [31:0] address_in;
+    wire [2:0] funct3;
+    wire [6:0] funct7;
+    wire [3:0] branch_op;
+    wire [31:0] o_rs1_data;
+    wire [31:0] o_rs2_data;
+    wire [4:0] rd;
+    wire [31:0] o_immediate;
+    wire [5:0] o_format;
+    wire [2:0] alu_op;
+    wire [1:0] reg_write_source_op;
+    wire [31:0] rs1_data;
+    wire [31:0] rs2_data;
+    wire [31:0] immediate;
+    wire [31:0] alu_result;
+    
+
 
     // Split into pipelined stages 
     // Have specific files for each stage. 
