@@ -151,34 +151,43 @@ module hart #(
 
     /** Instruction Decode **/
     decode i_decode (
-        .clk(clk),
-        .rst(rst),
-        .instr(i_imem_rdata),
+        .i_instr(i_imem_rdata),
         .opcode(opcode),
-        .rs1(rs1),
-        .rs2(rs2),
         .rd(rd),
-        .funct3(funct3),
-        .funct7(funct7),
-        .immediate(immediate),
-        .format(format),
+        .o_immediate(immediate),
+        .o_format(o_format),
         .alu_op(alu_op),
         .branch_op(branch_op),
         .mem_write(mem_write),
         .reg_write_source_op(reg_write_source_op),
         .reg_write(reg_write),
         .alu_src_op(alu_src_op),
-        .pc_src_op(pc_src_op)
+        .pc_src_op(pc_src_op),
+        .o_dmem_mask(o_dmem_mask),
+        .i_sub(i_sub),
+        .i_unsigned(i_unsigned),
+        .i_arith(i_arith),
+        .o_rs1_rdata(rs1_data),
+        .o_rs2_rdata(rs2_data)
     );
+        
 
     /** Execute **/
     execute i_execute (
-        .op(alu_op)
+        .pc_src_op(pc_src_op),
         .alu_src_op(alu_src_op),
+        .alu_op(alu_op),
         .rs1_data(rs1_data),
         .rs2_data(rs2_data),
         .immediate(immediate),
-        .alu_result(alu_result)
+        .alu_result(alu_result),
+        .o_eq(o_eq),
+        .o_slt(o_slt),
+        .i_sub(i_sub),
+        .i_unsigned(i_unsigned),
+        .i_arith(i_arith),
+        .branch_op(branch_op),
+        .branch_out(branch_out)
     );
 
 
@@ -200,6 +209,20 @@ module hart #(
 
 
     /** Writeback **/
+    writeback i_writeback (
+        .RegWrite(reg_write),
+        .rd(rd),
+        .PC(o_imem_raddr),
+        .Branch_out(branch_out),
+        .ALUResult(alu_result),
+        .ReadData(i_dmem_rdata),
+        .MemtoReg(reg_write_source_op),
+        .pc_src_op(pc_src_op),
+        .rd_out(i_rd_waddr),
+        .WriteData(WriteData),
+        .reg_write_wb(reg_write_wb),
+        .current_PC(address_in)
+    );
 
 
 

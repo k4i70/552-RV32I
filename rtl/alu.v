@@ -45,6 +45,32 @@ module alu (
     output wire        o_slt
 );
 
+    // Shift right arithmetic barrel shifter
+    wire msb = i_op1[31];
+    wire [4:0] shamt = i_op2[4:0];
+    wire [31:0] sra1 = shamt[0] ? {msb, i_op1[31:1]} : i_op1;
+    wire [31:0] sra2 = shamt[1] ? {{2{msb}}, sra1[31:2]} : sra1;
+    wire [31:0] sra4 = shamt[2] ? {{4{msb}}, sra2[31:4]} : sra2;
+    wire [31:0] sra8 = shamt[3] ? {{8{msb}}, sra4[31:8]} : sra4;
+    wire [31:0] sra16 = shamt[4] ? {{16{msb}}, sra8[31:16]} : sra8;
+    
+
+    // Shift left logical barrel shifter
+    wire [31:0] sll1 = shamt[0] ? {i_op1[30:0], 1'b0} : i_op1;
+    wire [31:0] sll2 = shamt[1] ? {sll1[30:0], 2'b0} : sll1;
+    wire [31:0] sll4 = shamt[2] ? {sll2[30:0], 4'b0} : sll2;
+    wire [31:0] sll8 = shamt[3] ? {sll4[30:0], 8'b0} : sll4;
+    wire [31:0] sll16 = shamt[4] ? {sll8[30:0], 16'b0} : sll8;
+
+
+    // Shift right logical barrel shifter
+    wire [31:0] srl1 = shamt[0] ? {1'b0, i_op1[31:1]} : i_op1;
+    wire [31:0] srl2 = shamt[1] ? {2'b0, srl1[31:2]} : srl1;
+    wire [31:0] srl4 = shamt[2] ? {4'b0, srl2[31:4]} : srl2;
+    wire [31:0] srl8 = shamt[3] ? {8'b0, srl4[31:8]} : srl4;
+    wire [31:0] srl16 = shamt[4] ? {16'b0, srl8[31:16]} : srl8;
+
+
     // Declare signed wire copies so they can be used for signed operations.
     wire signed [31:0] signed_op1 = i_op1;
     wire signed [31:0] signed_op2 = i_op2;
@@ -78,40 +104,15 @@ module alu (
         32'b0; // Default case
 
     // Equality result
-    assign o_eq = (i_op1 == i_op2) ? 32'b1 : 32'b0;
+    assign o_eq = (i_op1 == i_op2) ? 1'b1 : 1'b0;
 
     // Set less than result
     // Use same logic as above. 
-    assign o_slt = (i_unsigned) ? ((i_op1 < i_op2) ? 32'b1 : 32'b0) : ((signed_op1 < signed_op2) ? 32'b1 : 32'b0);
+    assign o_slt = (i_unsigned) ? ((i_op1 < i_op2) ? 1'b1 : 1'b0) : ((signed_op1 < signed_op2) ? 1'b1 : 1'b0);
         
 
         
-    // Shift right arithmetic barrel shifter
-    wire msb = i_op1[31];
-    wire [4:0] shamt = i_op2[4:0];
-    wire [31:0] sra1 = shamt[0] ? {msb, i_op1[31:1]} : i_op1;
-    wire [31:0] sra2 = shamt[1] ? {{2{msb}}, sra1[31:2]} : sra1;
-    wire [31:0] sra4 = shamt[2] ? {{4{msb}}, sra2[31:4]} : sra2;
-    wire [31:0] sra8 = shamt[3] ? {{8{msb}}, sra4[31:8]} : sra4;
-    wire [31:0] sra16 = shamt[4] ? {{16{msb}}, sra8[31:16]} : sra8;
     
-
-    // Shift left logical barrel shifter
-    wire [31:0] sll1 = shamt[0] ? {i_op1[30:0], 1'b0} : i_op1;
-    wire [31:0] sll2 = shamt[1] ? {sll1[30:0], 2'b0} : sll1;
-    wire [31:0] sll4 = shamt[2] ? {sll2[30:0], 4'b0} : sll2;
-    wire [31:0] sll8 = shamt[3] ? {sll4[30:0], 8'b0} : sll4;
-    wire [31:0] sll16 = shamt[4] ? {sll8[30:0], 16'b0} : sll8;
-
-
-    // Shift right logical barrel shifter
-    wire [31:0] srl1 = shamt[0] ? {1'b0, i_op1[31:1]} : i_op1;
-    wire [31:0] srl2 = shamt[1] ? {2'b0, srl1[31:2]} : srl1;
-    wire [31:0] srl4 = shamt[2] ? {4'b0, srl2[31:4]} : srl2;
-    wire [31:0] srl8 = shamt[3] ? {8'b0, srl4[31:8]} : srl4;
-    wire [31:0] srl16 = shamt[4] ? {16'b0, srl8[31:16]} : srl8;
-
-
     // 
 
 endmodule

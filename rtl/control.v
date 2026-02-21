@@ -10,7 +10,10 @@ module control (
 	output wire reg_write,
 	output wire alu_src_op,
 	output wire pc_src_op,
-	output wire [2:0] o_dmem_mask
+	output wire [2:0] o_dmem_mask,
+	output wire i_sub,
+	output wire i_unsigned,
+	output wire i_arith
 );
 
 // parameters for instruction formats, used for readability. 
@@ -27,8 +30,8 @@ localparam J_TYPE = 6'b100000;
 assign alu_op = (o_format == R_TYPE || o_format == I_TYPE) ? funct3 : 3'b0;
 
 // Branch op logic
-// This module we get to design, so I'm thinking we have 3 bits for branch op, and just pass the funct3 and have that logic handle it. 
-assign branch_op = (o_format == B_TYPE) ? funct3 : 3'b0;
+// This module we get to design, so I'm thinking we have 3 bits for branch op which are funct3, and then have the first bit set for jump isntructions. 
+assign branch_op = {((o_format == J_TYPE) ? 1'b1 : 1'b0), ((o_format == B_TYPE) ? funct3 : 3'b0)};
 
 // Memory write logic
 assign mem_write = (o_format == S_TYPE) ? 1'b1 : 1'b0; 
@@ -53,8 +56,19 @@ assign alu_src_op = (o_format == R_TYPE) ? 1'b0 : 1'b1;
 assign pc_src_op = (o_format == B_TYPE || o_format == J_TYPE || opcode == 7'b1100111) ? 1'b1 : 1'b0;
 
 // Dmem mask logic
-assign o_dmem_mask = (o_format == S_TYPE) ? funct3 : 3'b0;
+assign o_dmem_mask = (o_format == S_TYPE || o_format == I_TYPE) ? funct3 : 3'b0;
 
+// Subtract logic for ALU. 
+assign i_sub = (o_format == R_TYPE && funct7 == 7'b0100000) ? 1'b1 : 1'b0; // Subtract for sub instruction. 
 
+// i_unsigned logic for sltu instruction
+assign i_unsigned = (o_format == R_TYPE && funct3 == 3'b010) 
+	|| (o_format == I_TYPE && funct3 == 3'b010) ? 
+	1'b1 : 1'b0; 
+
+// i_arith logic for arithmetic right shift instruction
+assign i_arith = (o_format == R_TYPE && funct3 == 3'b101) 
+	|| (o_format == I_TYPE && funct3 == 3'b101) 
+	? 1'b1 : 1'b0;
 
 endmodule

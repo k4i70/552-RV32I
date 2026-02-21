@@ -1,12 +1,18 @@
 module execute (
+	input wire pc_src_op,
 	input wire alu_src_op,
 	input wire [2:0] alu_op,
 	input wire [31:0] rs1_data,
 	input wire [31:0] rs2_data,
 	input wire [31:0] immediate,
-	output wire [31:0] alu_result
+	output wire [31:0] alu_result,
 	output wire o_eq,
-	output wire o_slt
+	output wire o_slt,
+	input wire i_sub,
+	input wire i_unsigned,
+	input wire i_arith,
+	input wire [3:0] branch_op,
+	output wire [31:0] branch_out
 );
 
 // Most of this instantiates our ALU we already made
@@ -14,13 +20,23 @@ module execute (
 wire [31:0] rs2_data_muxed = (alu_src_op) ? immediate : rs2_data; 
 
 alu i_alu (
-	.op(alu_op),
-	.in1(rs1_data),
-	.in2(rs2_data_muxed), // Select between rs2 data and immediate based on alu_src_op
-	.result(alu_result)
+	.i_opsel(alu_op),
+	.i_unsigned(i_unsigned),
+	.i_sub(i_sub),
+	.i_arith(i_arith),
+	.i_op1(rs1_data),
+	.i_op2(rs2_data_muxed), // Select between rs2 data and immediate based on alu_src_op
+	.o_result(alu_result),
 	.o_eq(o_eq),
 	.o_slt(o_slt)
 );
 
-
+branch i_branch (
+	.branch_op(branch_op),
+	.slt(o_slt),
+	.equal(o_eq),
+	.pc_src_op(pc_src_op), // Reuse alu_src_op to determine if this is a branch instruction
+	.imm_in(immediate),
+	.branch_out(branch_out)
+	);
 endmodule

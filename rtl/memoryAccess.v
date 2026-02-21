@@ -8,7 +8,7 @@ module memoryAccess (
 	output wire [31:0] o_dmem_wdata,
 	input wire o_dmem_ren,
 	input wire o_dmem_wen,
-	input wire [3:0] o_dmem_mask
+	input wire [3:0] o_dmem_mask,
 	output wire [31:0] i_dmem_rdata
 );
 
@@ -22,6 +22,9 @@ assign dmem_ren = ~mem_write;
 assign dmem_wen = mem_write;  
 
 // Dmem mask 
+assign o_dmem_mask = (mem_write) ? o_dmem_mask : 4'b0; 
+
+
 
 
 endmodule
