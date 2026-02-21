@@ -41,13 +41,7 @@ module rf #(
     reg [31:0] registers [0:31];
     integer i;
 
-    // Initialize all registers to 0 at simulation start to avoid X propagation
-    // before the synchronous reset fires.
-    initial begin
-        for (i = 0; i < 32; i = i + 1)
-            registers[i] = 32'b0;
-    end
-
+    
     // Combinational logic for bypass and zero handling, go to register otherwise. 
     assign o_rs1_rdata = (i_rs1_raddr == 5'b0) ? 32'b0 : 
         (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs1_raddr)) ?
