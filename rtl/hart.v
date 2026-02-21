@@ -230,7 +230,8 @@ module hart #(
         .branch_op(branch_op),
         .branch_out(branch_out),
         .jalr_op(jalr_op),
-        .alu_pc_op(alu_pc_op)
+        .alu_pc_op(alu_pc_op),
+        .PC(o_imem_raddr)
     );
 
 
@@ -249,7 +250,8 @@ module hart #(
         .dmem_mask_base(dmem_mask_base),
         .mem_read(mem_read),
         .funct3(funct3),
-        .i_unsigned(i_unsigned)
+        .i_unsigned(i_unsigned),
+        .o_load_data(WriteData)
     );
 
 
@@ -260,7 +262,7 @@ module hart #(
         .PC(o_imem_raddr),
         .branch_out(branch_out),
         .ALUResult(alu_result),
-        .ReadData(i_dmem_rdata),
+        .ReadData(WriteData),
         .MemtoReg(reg_write_source_op),
         .pc_src_op(pc_src_op),
         .rd_out(rd_out),

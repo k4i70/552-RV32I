@@ -71,11 +71,13 @@ module alu (
     wire [31:0] srl16 = shamt[4] ? {16'b0, srl8[31:16]} : srl8;
 
 
-    // Declare signed wire copies so they can be used for signed operations.
-    wire signed [31:0] signed_op1 = i_op1;
-    wire signed [31:0] signed_op2 = i_op2;
+    // Signed less-than: if signs differ, the one with MSB=1 is negative (less).
+    // If signs are the same, unsigned comparison is correct.
+    wire op1_neg = i_op1[31];
+    wire op2_neg = i_op2[31];
+    wire signed_lt = (op1_neg && !op2_neg) ||
+                     ((op1_neg == op2_neg) && (i_op1 < i_op2));
 
-    
     assign o_result = (i_opsel == 3'b000) ? 
         // Addition/subtraction
         ((i_sub) ? (i_op1 - i_op2) : (i_op1 + i_op2)) :
@@ -85,7 +87,7 @@ module alu (
         (sll16) : 
         (i_opsel == 3'b010 || i_opsel == 3'b011) ?
         // set less than/unsigned
-        ((i_unsigned) ? ((i_op1 < i_op2) ? 32'b1 : 32'b0) : ((signed_op1 < signed_op2) ? 32'b1 : 32'b0)) :
+        ((i_unsigned) ? ((i_op1 < i_op2) ? 32'b1 : 32'b0) : (signed_lt ? 32'b1 : 32'b0)) :
         (i_opsel == 3'b100) ?
         // exclusive or
         (i_op1 ^ i_op2) :
@@ -108,7 +110,7 @@ module alu (
 
     // Set less than result
     // Use same logic as above. 
-    assign o_slt = (i_unsigned) ? ((i_op1 < i_op2) ? 1'b1 : 1'b0) : ((signed_op1 < signed_op2) ? 1'b1 : 1'b0);
+    assign o_slt = (i_unsigned) ? ((i_op1 < i_op2) ? 1'b1 : 1'b0) : (signed_lt ? 1'b1 : 1'b0);
         
 
         

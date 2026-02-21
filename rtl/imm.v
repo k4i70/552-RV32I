@@ -35,7 +35,7 @@ module imm (
     // Probably shouldn't be OR with Don't Cares, fixed flipped numbers
     wire [31:0] imm_u = {i_inst[31:12], 12'b0};
     // Changed to 1'b0, changed instructions, and added 12 0s. 
-    wire [31:0] imm_j = {{11{i_inst[31]}}, // sign extension
+    wire [31:0] imm_j = {{12{i_inst[31]}}, // sign extension
                         i_inst[19:12],     // imm[19:12]
                         i_inst[20],        // imm[11]
                         i_inst[30:21],     // imm[10:1]
