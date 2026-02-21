@@ -37,36 +37,43 @@ module rf #(
     input  wire [ 4:0] i_rd_waddr,
     input  wire [31:0] i_rd_wdata
 );
-    // 32 arrays of 32 bits each. 
-    reg [31:0] registers [0:31];
-    integer i;
-
+    // TODO: Fill in your implementation here.
+    // regs
+    reg [31:0] regs [0:31];
+    reg [31:0] rs1, rs2;
     
-    // Combinational logic for bypass and zero handling, go to register otherwise. 
-    assign o_rs1_rdata = (i_rs1_raddr == 0) ? 32'b0 : 
-        (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs1_raddr)) ?
-        i_rd_wdata : registers[i_rs1_raddr];
-    assign o_rs2_rdata = (i_rs2_raddr == 0) ? 32'b0 : 
-        (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs2_raddr)) ?
-        i_rd_wdata : registers[i_rs2_raddr];
-    
-
     always @(posedge i_clk) begin
-        if (i_rst) begin
-            // Reset logic
-            for (i=0; i<32; i = i + 1) begin
-                registers[i] <= 32'b0;
-            end
-        end else if (i_rd_wen) begin
-            // Write logic (synchronous)
-            if (i_rd_waddr != 0) begin
-                registers[i_rd_waddr] <= i_rd_wdata; 
-            end
-        end else begin
-            // Do nothing
+        // reset equalling 0
+        if (i_rd_wen && i_rd_waddr!= 5'h00) begin
+            regs[i_rd_waddr] <= i_rd_wdata;
         end
     end
     
+    always @(*) begin
+        // Just 0
+        if (i_rs1_raddr== 5'h00)
+            rs1 = 32'h00000000;
+        // Give updated value when bypass is in use
+        else if (BYPASS_EN && i_rd_wen&& (i_rs1_raddr == i_rd_waddr))
+            rs1 = i_rd_wdata;
+        else
+            rs1 = regs[i_rs1_raddr];
+    end
+    
+    always @(*) begin
+        // Just 0
+        if (i_rs2_raddr == 5'h00)
+            rs2 = 32'h00000000;
+        // Give updated value when bypass is in use
+        else if (BYPASS_EN && i_rd_wen && (i_rs2_raddr == i_rd_waddr))
+            rs2 = i_rd_wdata;
+        else
+            rs2= regs[i_rs2_raddr];
+    end
+    // End results
+    assign o_rs1_rdata = rs1;
+    assign o_rs2_rdata = rs2;
+
 endmodule
 
 `default_nettype wire
