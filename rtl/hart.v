@@ -160,7 +160,7 @@ module hart #(
     wire [31:0] load_data;
 
     wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
-    wire reg_write_wb, jalr_op, alu_pc_op, mem_read;
+    wire reg_write_wb, jalr_op, alu_pc_op, mem_read, lui_op;
 
     // Gate register writes with valid to prevent writes during the reset cycle
     wire reg_write_wb_safe = reg_write_wb & o_retire_valid;
@@ -216,7 +216,8 @@ module hart #(
         .rs2_raddr(rs2_raddr),
         .jalr_op(jalr_op),
         .alu_pc_op(alu_pc_op),
-        .mem_read(mem_read)
+        .mem_read(mem_read),
+        .lui_op(lui_op)
     );
         
 
@@ -238,7 +239,8 @@ module hart #(
         .branch_out(branch_out),
         .jalr_op(jalr_op),
         .alu_pc_op(alu_pc_op),
-        .PC(o_imem_raddr)
+        .PC(o_imem_raddr),
+        .lui_op(lui_op)
     );
 
 

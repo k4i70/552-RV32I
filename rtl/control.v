@@ -16,7 +16,8 @@ module control (
 	output wire i_arith,
 	output wire jalr_op,
 	output wire alu_pc_op,
-	output wire mem_read
+	output wire mem_read,
+	output wire lui_op
 );
 
 // parameters for instruction formats, used for readability. 
@@ -86,5 +87,7 @@ assign jalr_op = (opcode == 7'b1100111) ? 1'b1 : 1'b0;
 assign alu_pc_op = (opcode == 7'b0010111) ? 1'b1 : 1'b0; 
 
 assign mem_read = (opcode == 7'b0000011) ? 1'b1 : 1'b0;
+
+assign lui_op = (opcode == 7'b0110111) ? 1'b1 : 1'b0;
 
 endmodule

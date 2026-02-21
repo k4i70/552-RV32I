@@ -28,7 +28,8 @@ module decode #(
 	output wire [4:0] rs2_raddr,
 	output wire jalr_op,
 	output wire alu_pc_op,
-	output wire mem_read
+	output wire mem_read,
+	output wire lui_op
 );
 
 // Immediate signals
@@ -61,11 +62,9 @@ assign rd = (o_format == S_TYPE || o_format == B_TYPE)
 assign funct3 = (o_format == U_TYPE || o_format == J_TYPE) 
 	? 3'b0 : i_instr[14:12] ; // Not U or J i_instruction
 
-assign i_rs1_raddr = (o_format == U_TYPE || o_format == J_TYPE) 
-	? 5'b0 : i_instr[19:15]; // Not U or J i_instruction
+assign i_rs1_raddr = i_instr[19:15];
 
-assign i_rs2_raddr = (o_format == U_TYPE || o_format == J_TYPE) 
-	? 5'b0 : i_instr[24:20]; // Only U and J type don't have an rs2 field
+assign i_rs2_raddr = i_instr[24:20];
 
 assign funct7 = (o_format == R_TYPE || o_format == I_TYPE)
 	? i_instr[31:25] : 7'b0; // Only R and I type instructions use funct7
@@ -94,7 +93,8 @@ control i_control (
 	.i_arith(i_arith),
 	.jalr_op(jalr_op),
 	.alu_pc_op(alu_pc_op),
-	.mem_read(mem_read)
+	.mem_read(mem_read),
+	.lui_op(lui_op)
 );
 
 

@@ -15,11 +15,12 @@ module execute (
 	output wire [31:0] branch_out,
 	input wire jalr_op,
 	input wire alu_pc_op,
-	input wire [31:0] PC
+	input wire [31:0] PC,
+	input wire lui_op
 );
 
 // Most of this instantiates our ALU we already made
-wire [31:0] op1_muxed = (alu_pc_op) ? PC : rs1_data; // If this is a U-type, use PC instead of rs1. 
+wire [31:0] op1_muxed = (alu_pc_op) ? PC : (lui_op) ? 32'b0 : rs1_data; // AUIPC uses PC, LUI uses 0, otherwise rs1. 
 wire [31:0] rs2_data_muxed = (alu_src_op) ? immediate : rs2_data; // Choose between intermediate and rs2. 
 
 alu i_alu (
