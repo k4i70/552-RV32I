@@ -31,7 +31,7 @@ barrel_shifter i_barrel_shifter (
 	.in(rs2_data),
 	.shft_amt(byte_offset),
 	.out(wdata_shifted),
-	.direction(1'b0)
+	.direction(1'b1)
 );
 
 assign o_dmem_wdata = wdata_shifted;
@@ -43,26 +43,28 @@ barrel_shifter i_barrel_shifter_rdata (
 	.in(i_dmem_rdata),
 	.shft_amt(byte_offset),
 	.out(rdata_shifted),
-	.direction(1'b1)
+	.direction(1'b0)
 );
 
 // For now, just read values when mem_write is low
 assign o_dmem_ren = mem_read;
 assign o_dmem_wen = mem_write;  
 
-// Sign extend byte and half word to full length. 
-wire [31:0] load_byte = i_unsigned ? {24'b0, rdata_shifted[7:0]} : 
+// Sign extend byte and half word to full length.
+// Use funct3[2] to determine unsigned (LBU=100, LHU=101) vs signed (LB=000, LH=001)
+wire load_unsigned = funct3[2];
+
+wire [31:0] load_byte = load_unsigned ? {24'b0, rdata_shifted[7:0]} : 
 						{{24{rdata_shifted[7]}}, rdata_shifted[7:0]};
 
-wire [31:0] load_half = i_unsigned ? {16'b0, rdata_shifted[15:0]} : 
+wire [31:0] load_half = load_unsigned ? {16'b0, rdata_shifted[15:0]} : 
 						{{16{rdata_shifted[15]}}, rdata_shifted[15:0]};
 
 wire [31:0] load_word = rdata_shifted;
 
-assign o_load_data = (funct3 == 3'b000) ? load_byte :
-					 (funct3 == 3'b001) ? load_half :
-					 (funct3 == 3'b010) ? load_word :
-					 32'b0; // Default case
+assign o_load_data = (funct3[1:0] == 2'b00) ? load_byte :
+					 (funct3[1:0] == 2'b01) ? load_half :
+					 load_word;
 
 
 

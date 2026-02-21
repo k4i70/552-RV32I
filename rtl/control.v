@@ -81,8 +81,9 @@ assign i_arith = (o_format == R_TYPE && funct3 == 3'b101 && funct7 == 7'b0100000
 
 assign jalr_op = (opcode == 7'b1100111) ? 1'b1 : 1'b0; 
 
-// Allows us to use ALU for calculating JAL instructions. 
-assign alu_pc_op = (o_format == U_TYPE) ? 1'b1 : 1'b0; 
+// Allows us to use ALU for calculating AUIPC instructions. 
+// LUI just needs the immediate (rs1=x0=0), only AUIPC needs PC as op1.
+assign alu_pc_op = (opcode == 7'b0010111) ? 1'b1 : 1'b0; 
 
 assign mem_read = (opcode == 7'b0000011) ? 1'b1 : 1'b0;
 

@@ -136,6 +136,7 @@ module hart #(
     wire [6:0] opcode;
     wire [31:0] address_in;
     wire [2:0] funct3;
+    wire [2:0] mem_funct3;
     wire [6:0] funct7;
     wire [3:0] branch_op;
     wire [31:0] o_rs1_data;
@@ -161,7 +162,7 @@ module hart #(
     wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
     wire reg_write_wb, jalr_op, alu_pc_op, mem_read;
 
-    assign funct3 = i_imem_rdata[14:12];
+    assign mem_funct3 = i_imem_rdata[14:12];
 
     
 
@@ -252,7 +253,7 @@ module hart #(
         .o_dmem_mask(o_dmem_mask),
         .dmem_mask_base(dmem_mask_base),
         .mem_read(mem_read),
-        .funct3(funct3),
+        .funct3(mem_funct3),
         .i_unsigned(i_unsigned),
         .o_load_data(load_data)
     );
