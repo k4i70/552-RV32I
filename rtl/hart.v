@@ -162,6 +162,9 @@ module hart #(
     wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
     wire reg_write_wb, jalr_op, alu_pc_op, mem_read;
 
+    // Gate register writes with valid to prevent writes during the reset cycle
+    wire reg_write_wb_safe = reg_write_wb & o_retire_valid;
+
     assign mem_funct3 = i_imem_rdata[14:12];
 
     
@@ -206,7 +209,7 @@ module hart #(
         .i_arith(i_arith),
         .o_rs1_rdata(rs1_data),
         .o_rs2_rdata(rs2_data),
-        .reg_write_wb(reg_write_wb),
+        .reg_write_wb(reg_write_wb_safe),
         .i_rd_waddr(rd_out),
         .i_rd_wdata(WriteData),
         .rs1_raddr(rs1_raddr),

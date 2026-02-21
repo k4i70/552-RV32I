@@ -19,9 +19,11 @@ always @(posedge i_clk) begin
 	if (i_rst) begin
 		PC <= RESET_ADDR; // On reset, set PC to reset address
 		PC_valid <= 1'b0; // On reset, PC is not valid
+	end else if (!PC_valid) begin
+		// First cycle after reset: keep PC at RESET_ADDR, just assert valid
+		PC_valid <= 1'b1;
 	end else begin
 		PC <= address_in; // Otherwise, update PC to the next instruction address
-		PC_valid <= 1'b1; // Set PC valid to 1 to indicate a valid instruction 
 	end
 end
 
