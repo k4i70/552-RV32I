@@ -39,19 +39,53 @@ module rf #(
 );
     // 32 arrays of 32 bits each. 
     reg [31:0] registers [0:31];
-    integer i;
 
     
     // Combinational logic for bypass and zero handling, go to register otherwise. 
-    assign o_rs1_rdata = (i_rs1_raddr == 5'b0) ? 32'b0 : 
-        (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs1_raddr)) ?
-        i_rd_wdata : registers[i_rs1_raddr];
+    assign o_rs1_rdata = (i_rs1_raddr == 5'b0) ? 32'b0 : // Zero register
+        (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs1_raddr)) ? // Bypass, if enabled and wen, and address match
+        i_rd_wdata : registers[i_rs1_raddr]; // Otherwise, read from register file
     assign o_rs2_rdata = (i_rs2_raddr == 5'b0) ? 32'b0 : 
         (BYPASS_EN && i_rd_wen && (i_rd_waddr == i_rs2_raddr)) ?
         i_rd_wdata : registers[i_rs2_raddr];
 
     always @(posedge i_clk) begin
-        if (i_rd_wen && (i_rd_waddr != 5'b0)) begin
+        if (i_rst) begin
+            // There has to be a better way to do this, but the loop isn't allowed. 
+            // And it's returning XXX instead. 
+            registers[ 0] <= 32'b0; 
+            registers[ 1] <= 32'b0;
+            registers[ 2] <= 32'b0; 
+            registers[ 3] <= 32'b0;
+            registers[ 4] <= 32'b0; 
+            registers[ 5] <= 32'b0;
+            registers[ 6] <= 32'b0; 
+            registers[ 7] <= 32'b0;
+            registers[ 8] <= 32'b0; 
+            registers[ 9] <= 32'b0;
+            registers[10] <= 32'b0; 
+            registers[11] <= 32'b0;
+            registers[12] <= 32'b0; 
+            registers[13] <= 32'b0;
+            registers[14] <= 32'b0; 
+            registers[15] <= 32'b0;
+            registers[16] <= 32'b0; 
+            registers[17] <= 32'b0;
+            registers[18] <= 32'b0; 
+            registers[19] <= 32'b0;
+            registers[20] <= 32'b0; 
+            registers[21] <= 32'b0;
+            registers[22] <= 32'b0; 
+            registers[23] <= 32'b0;
+            registers[24] <= 32'b0; 
+            registers[25] <= 32'b0;
+            registers[26] <= 32'b0; 
+            registers[27] <= 32'b0;
+            registers[28] <= 32'b0; 
+            registers[29] <= 32'b0;
+            registers[30] <= 32'b0; 
+            registers[31] <= 32'b0;
+        end else if (i_rd_wen && (i_rd_waddr != 5'b0)) begin
             registers[i_rd_waddr] <= i_rd_wdata; 
         end
     end

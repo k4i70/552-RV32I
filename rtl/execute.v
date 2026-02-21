@@ -15,7 +15,8 @@ module execute (
 	output wire [31:0] branch_out,
 	input wire jalr_op,
 	input wire alu_pc_op,
-	input wire [31:0] PC
+	input wire [31:0] PC,
+	output wire 
 );
 
 // Most of this instantiates our ALU we already made
