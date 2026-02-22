@@ -31,7 +31,8 @@ localparam J_TYPE = 6'b100000;
 
 // ALU op control logic
 // Can assign funct3 to ALU_op for R-type and I-type instructions due to the design of the ALU
-assign alu_op = (o_format == R_TYPE || o_format == I_TYPE) ? funct3 : 3'b0;
+// Loads always need addition (3'b000) to compute the memory address (rs1 + offset).
+assign alu_op = (o_format == R_TYPE || (o_format == I_TYPE && opcode != 7'b0000011)) ? funct3 : 3'b0;
 
 // Branch op logic
 // This module we get to design, so I'm thinking we have 3 bits for branch op which are funct3, and then have the first bit set for jump isntructions. 
