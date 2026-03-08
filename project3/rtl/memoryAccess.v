@@ -11,6 +11,7 @@ module memoryAccess (
 	output wire [3:0] o_dmem_mask,
 	input wire mem_read,
 	input wire [2:0] funct3,
+	input wire i_unsigned,
 	output wire [31:0] o_load_data
 );
 

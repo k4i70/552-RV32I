@@ -89,7 +89,6 @@ assign alu_pc_op = (opcode == 7'b0010111) ? 1'b1 : 1'b0;
 
 assign mem_read = (opcode == 7'b0000011) ? 1'b1 : 1'b0;
 
-// LUI op, used 
 assign lui_op = (opcode == 7'b0110111) ? 1'b1 : 1'b0;
 
 endmodule
