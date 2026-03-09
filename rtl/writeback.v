@@ -23,10 +23,8 @@ module writeback #(
 
 	//output signals
 	output wire [31:0] WriteData,
-	output wire [4:0] rd_out,
 
 	//output control signals
-	output wire reg_write_wb,
 	output wire [31:0] current_PC
 );
 
@@ -35,10 +33,7 @@ module writeback #(
 assign WriteData = (MemtoReg == 2'b01) ? PC + 32'h4 :
 					(MemtoReg == 2'b10)? ReadData:
 										ALUResult;
-assign rd_out = rd;
 
-// Pass through control signals
-assign reg_write_wb = RegWrite;
 
 assign current_PC = jalr_op ? (ALUResult & ~32'h1) :
 	(pc_src_op) ? PC + branch_out : PC + 32'h4;

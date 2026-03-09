@@ -124,26 +124,29 @@ module hart #(
     // the next program counter after the instruction is retired. For most
     // instructions, this is `o_retire_pc + 4`, but must be the branch or jump
     // target for *taken* branches and jumps.
-    output wire [31:0] o_retire_next_pc
+    output wire [31:0] o_retire_next_pc,
+
+    // New signals
+    output wire [31:0] o_retire_dmem_addr,
+    output wire o_retire_dmem_ren,
+    output wire o_retire_dmem_wen,
+    output wire [3:0] o_retire_dmem_mask,
+    output wire [31:0] o_retire_dmem_wdata,
+    output wire [31:0] o_retire_dmem_rdata
 
 `ifdef RISCV_FORMAL
     ,`RVFI_OUTPUTS,
 `endif
 );
+
     // Fill in your implementation here.
 
     // Intermediate signals
     wire [6:0] opcode;
     wire [31:0] address_in;
     wire [2:0] funct3;
-    wire [2:0] mem_funct3;
-    wire [6:0] funct7;
     wire [3:0] branch_op;
-    wire [31:0] o_rs1_data;
-    wire [31:0] o_rs2_data;
     wire [4:0] rd;
-    wire [31:0] o_immediate;
-    wire [5:0] o_format;
     wire [2:0] alu_op;
     wire [1:0] reg_write_source_op;
     wire [31:0] rs1_data;
@@ -152,28 +155,15 @@ module hart #(
     wire [31:0] alu_result;
     wire [31:0] branch_out;
     wire [31:0] WriteData;
-    wire [4:0] rd_out;
-    wire [31:0] mem_raddr;
-    wire [4:0] rs1_raddr;
-    wire [4:0] rs2_raddr;
     wire [3:0] dmem_mask_base;
-    wire [31:0] load_data;
 
-    wire mem_write, reg_write, alu_src_op, pc_src_op, o_eq, o_slt, i_sub, i_unsigned, i_arith;
-    wire reg_write_wb, jalr_op, alu_pc_op, mem_read, lui_op;
+    wire mem_write, reg_write, alu_src_op, pc_src_op, i_sub, i_unsigned, i_arith;
+    wire jalr_op, alu_pc_op, mem_read, lui_op;
 
     // Gate register writes with valid to prevent writes during the reset cycle
-    wire reg_write_wb_safe = reg_write_wb & o_retire_valid;
+    wire reg_write_wb_safe = MW_reg_write & o_retire_valid;
 
-    assign mem_funct3 = i_imem_rdata[14:12];
-
-    
-
-
-    // Split into pipelined stages 
-    // Have specific files for each stage. 
-    // Piece of advice from people who have taken the class before, split into a bunch of small subfiles
-    // So most of the code is probably just connecting all the subfiles
+    wire [31:0] load_data;
 
 
     /** Instruction Fetch **/
@@ -186,23 +176,15 @@ module hart #(
     );
 
 	// IFID pipeline register. 
-    reg [31:0] FD_o_imem_rdata;
-    reg [4:0] FD_i_rd_waddr;
-    reg [31:0] FD_i_rd_wdata;
     reg [31:0] FD_i_instr;
+    reg [31:0] FD_PC;
     always @(posedge i_clk) begin
         if (i_rst) begin
-            FD_o_imem_rdata <= 32'b0;
-            FD_i_rd_waddr <= 5'b0;
-            FD_i_rd_wdata <= 32'b0;
             FD_i_instr <= 32'b0;
-            FD_reg_write_wb <= 1'b0;
+            FD_PC <= RESET_ADDR;
         end else begin
-            FD_o_imem_rdata <= i_imem_rdata;
-            FD_i_rd_waddr <= rd;
-            FD_i_rd_wdata <= WriteData;
             FD_i_instr <= i_imem_rdata;
-            FD_reg_write_wb <= reg_write_wb_safe;
+            FD_PC <= o_imem_raddr;
         end
     end
 
@@ -216,7 +198,6 @@ module hart #(
         .opcode(opcode),
         .rd(rd),
         .o_immediate(immediate),
-        .o_format(o_format),
         .alu_op(alu_op),
         .branch_op(branch_op),
         .mem_write(mem_write),
@@ -231,18 +212,19 @@ module hart #(
         .o_rs1_rdata(rs1_data),
         .o_rs2_rdata(rs2_data),
         .reg_write_wb(reg_write_wb_safe),
-        .i_rd_waddr(rd_out),
-        .i_rd_wdata(FD_i_rd_wdata),
-        .rs1_raddr(rs1_raddr),
-        .rs2_raddr(rs2_raddr),
+        .i_rd_waddr(MW_rd),
+        .i_rd_wdata(WriteData),
         .jalr_op(jalr_op),
         .alu_pc_op(alu_pc_op),
         .mem_read(mem_read),
-        .lui_op(lui_op)
+        .lui_op(lui_op),
+        .funct3(funct3),
+        .i_pc(FD_PC),
+        .branch_out(branch_out)
     );
         
     // DE control signals
-    reg DE_reg_write_source_op;
+    reg [1:0] DE_reg_write_source_op;
     reg DE_reg_write;
     reg DE_pc_src_op;
     reg DE_jalr_op;
@@ -257,9 +239,10 @@ module hart #(
     reg DE_i_arith;
     reg DE_alu_pc_op;
     reg DE_lui_op;
+    reg [31:0] DE_PC;
     always @(posedge i_clk) begin
         if (i_rst) begin
-            DE_reg_write_source_op <= 1'b0;
+            DE_reg_write_source_op <= 2'b0;
             DE_reg_write <= 1'b0;
             DE_pc_src_op <= 1'b0;
             DE_jalr_op <= 1'b0;
@@ -274,6 +257,7 @@ module hart #(
             DE_i_arith <= 1'b0;
             DE_alu_pc_op <= 1'b0;
             DE_lui_op <= 1'b0;
+            DE_PC <= 32'b0;
         end else begin
             DE_reg_write_source_op <= reg_write_source_op;
             DE_reg_write <= reg_write;
@@ -282,7 +266,7 @@ module hart #(
             DE_mem_write <= mem_write;
             DE_o_dmem_mask <= dmem_mask_base;
             DE_mem_read <= mem_read;
-            DE_funct3 <= mem_funct3;
+            DE_funct3 <= funct3;
             DE_alu_op <= alu_op;
             DE_alu_src_op <= alu_src_op;
             DE_i_sub <= i_sub;
@@ -290,73 +274,54 @@ module hart #(
             DE_i_arith <= i_arith;
             DE_alu_pc_op <= alu_pc_op;
             DE_lui_op <= lui_op;
+            DE_PC <= FD_PC;
+        end
+    end
+
+    // DE data signals
+    reg [4:0] DE_rd;
+    reg [31:0] DE_rs1_data;
+    reg [31:0] DE_rs2_data;
+    reg [31:0] DE_immediate;
+    reg [31:0] DE_branch_out;
+    reg [31:0] DE_instr;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            DE_rd <= 5'b0;
+            DE_rs1_data <= 32'b0;
+            DE_rs2_data <= 32'b0;
+            DE_immediate <= 32'b0;
+            DE_branch_out <= 32'b0;
+            DE_instr <= 32'b0;
+        end else begin
+            DE_rd <= rd;
+            DE_rs1_data <= rs1_data;
+            DE_rs2_data <= rs2_data;
+            DE_immediate <= immediate;
+            DE_branch_out <= branch_out;
+            DE_instr <= FD_i_instr;
         end
     end
 
     /** Execute **/
     execute i_execute (
-        .pc_src_op(DE_pc_src_op),
         .alu_src_op(DE_alu_src_op),
         .alu_op(DE_alu_op),
-        .rs1_data(rs1_data),
-        .rs2_data(rs2_data),
-        .immediate(immediate),
+        .rs1_data(DE_rs1_data),
+        .rs2_data(DE_rs2_data),
+        .immediate(DE_immediate),
         .alu_result(alu_result),
-        .o_eq(o_eq),
-        .o_slt(o_slt),
         .i_sub(DE_i_sub),
         .i_unsigned(DE_i_unsigned),
         .i_arith(DE_i_arith),
-        .branch_op(branch_op),
-        .branch_out(branch_out),
-        .jalr_op(jalr_op),
         .alu_pc_op(DE_alu_pc_op),
-        .PC(o_imem_raddr),
+        .PC(DE_PC),
         .lui_op(DE_lui_op)
     );
 
 
-    // EM pipeline register
-    /*
-    reg EM_reg_write;
-    reg [1:0] EM_reg_write_source_op;
-    reg EM_pc_src_op;
-    reg EM_jalr_op;
-    reg [4:0] EM_rd;
-    reg [31:0] EM_ALUResult;
-    reg [31:0] EM_rs2_data;
-    reg [31:0] EM_branch_out;
-    reg [31:0] EM_PC;
-    reg EM_mem_write;
-    reg [3:0] EM_dmem_mask_base;
-    reg [31:0] EM_i_dmem_rdata;
-    reg EM_mem_read;
-    reg [2:0] EM_funct3;
-    reg EM_i_unsigned;
-    always @(posedge i_clk) begin
-        if (!i_rst) begin
-            EM_reg_write <= 0;
-            EM_reg_write_source_op <= 0;
-            EM_pc_src_op <= 0;
-            EM_jalr_op <= 0;
-            EM_rd <= 0;
-            EM_ALUResult <= 0;
-            EM_rs2_data <= 0;
-            EM_branch_out <= 0;
-            EM_PC <= 0;
-            EM_mem_write <= 0;
-            EM_dmem_mask_base <= 0;
-            EM_i_dmem_rdata <= 0;
-            EM_mem_read <= 0;
-            EM_funct3 <= 0;
-            EM_i_unsigned <= 0;
-        end else begin
-        end
-    end
-    */
-
     // EM pipeline control signals
-    reg EM_reg_write_source_op;
+    reg [1:0] EM_reg_write_source_op;
     reg EM_reg_write;
     reg EM_pc_src_op;
     reg EM_jalr_op;
@@ -364,8 +329,10 @@ module hart #(
     reg [3:0] EM_o_dmem_mask;
     reg EM_mem_read;
     reg [2:0] EM_funct3;
+    reg [31:0] EM_PC;
+    reg [31:0] EM_instr;
     always @(posedge i_clk) begin
-        if (!i_rst) begin
+        if (i_rst) begin
             EM_reg_write_source_op <= 1'b0;
             EM_reg_write <= 1'b0;
             EM_pc_src_op <= 1'b0;
@@ -374,91 +341,132 @@ module hart #(
             EM_o_dmem_mask <= 4'b0;
             EM_mem_read <= 1'b0;
             EM_funct3 <= 3'b0;
+            EM_PC <= 32'b0;
+            EM_instr <= 32'b0;
         end else begin
-            EM_reg_write_source_op <= reg_write_source_op;
-            EM_reg_write <= reg_write;
-            EM_pc_src_op <= pc_src_op;
-            EM_jalr_op <= jalr_op;
-            EM_mem_write <= mem_write;
-            EM_o_dmem_mask <= dmem_mask_base;
-            EM_mem_read <= mem_read;
-            EM_funct3 <= mem_funct3;
+            EM_reg_write_source_op <= DE_reg_write_source_op;
+            EM_reg_write <= DE_reg_write;
+            EM_pc_src_op <= DE_pc_src_op;
+            EM_jalr_op <= DE_jalr_op;
+            EM_mem_write <= DE_mem_write;
+            EM_o_dmem_mask <= DE_o_dmem_mask;
+            EM_mem_read <= DE_mem_read;
+            EM_funct3 <= DE_funct3;
+            EM_PC <= DE_PC;
+            EM_instr <= DE_instr;
         end
     end
+
+    // EM data signals
+    reg [4:0] EM_rd;
+    reg [31:0] EM_rs1_data;
+    reg [31:0] EM_rs2_data;
+    reg [31:0] EM_ALUResult;
+    reg [31:0] EM_branch_out;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            EM_rd <= 5'b0;
+            EM_rs1_data <= 32'b0;
+            EM_rs2_data <= 32'b0;
+            EM_ALUResult <= 32'b0;
+            EM_branch_out <= 32'b0;
+        end else begin
+            EM_rd <= DE_rd;
+            EM_rs1_data <= DE_rs1_data;
+            EM_rs2_data <= DE_rs2_data;
+            EM_ALUResult <= alu_result;
+            EM_branch_out <= DE_branch_out;
+        end
+    end
+    
 
 
     /** Memory Access **/
     memoryAccess i_memoryAccess (
-        .mem_write(mem_write),
-        .alu_result(alu_result), 
-        .rs2_data(rs2_data),
+        .mem_write(EM_mem_write),
+        .alu_result(EM_ALUResult), 
+        .rs2_data(EM_rs2_data),
         .o_dmem_addr(o_dmem_addr), 
         .o_dmem_wdata(o_dmem_wdata),
         .o_dmem_ren(o_dmem_ren),
         .o_dmem_wen(o_dmem_wen),
         .i_dmem_rdata(i_dmem_rdata),
         .o_dmem_mask(o_dmem_mask),
-        .dmem_mask_base(dmem_mask_base),
-        .mem_read(mem_read),
-        .funct3(mem_funct3),
+        .dmem_mask_base(EM_o_dmem_mask),
+        .mem_read(EM_mem_read),
+        .funct3(EM_funct3),
         .o_load_data(load_data)
     );
 
 
-    // MW pipeline register
-    /*
-    reg MW_reg_write;
-    reg [1:0] MW_reg_write_source_op;
-    reg MW_pc_src_op;
-    reg MW_jalr_op;
-    reg [4:0] MW_rd;
-    reg [31:0] MW_ALUResult;
-    reg [31:0] MW_ReadData;
-    reg [31:0] MW_branch_out;
-    reg [31:0] MW_PC;
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            MW_reg_write <= 0;
-            MW_reg_write_source_op <= 0;
-            MW_pc_src_op <= 0;
-            MW_jalr_op <= 0;
-            MW_rd <= 0;
-            MW_ALUResult <= 0;
-            MW_ReadData <= 0;
-            MW_branch_out <= 0;
-            MW_PC <= 0;
-        end else begin
-            MW_reg_write <= EM_reg_write;
-            MW_reg_write_source_op <= EM_reg_write_source_op;
-            MW_pc_src_op <= EM_pc_src_op;
-            MW_jalr_op <= EM_jalr_op;
-            MW_rd <= EM_rd;
-            MW_ALUResult <= EM_ALUResult;
-            MW_ReadData <= EM_i_dmem_rdata;
-            MW_branch_out <= EM_branch_out;
-            MW_PC <= EM_PC;
-        end
-    end
-    */
-
     // MW pipeline control signals
-    reg MW_reg_write_source_op;
+    reg [1:0] MW_reg_write_source_op;
     reg MW_reg_write;
     reg MW_pc_src_op;
     reg MW_jalr_op;
+    reg [31:0] MW_PC;
+    reg [31:0] MW_instr;
     always @(posedge i_clk) begin
         if (i_rst) begin
             MW_reg_write_source_op <= 1'b0;
             MW_reg_write <= 1'b0;
             MW_pc_src_op <= 1'b0;
             MW_jalr_op <= 1'b0;
+            MW_PC <= 32'b0;
+            MW_instr <= 32'b0;
         end else begin
             MW_reg_write_source_op <= EM_reg_write_source_op;
             MW_reg_write <= EM_reg_write;
             MW_pc_src_op <= EM_pc_src_op;
             MW_jalr_op <= EM_jalr_op;
+            MW_PC <= EM_PC;
+            MW_instr <= EM_instr;
         end
     end
+
+    // MW data signals
+    reg [4:0] MW_rd;
+    reg [31:0] MW_rs1_data;
+    reg [31:0] MW_rs2_data;
+    reg [31:0] MW_ALUResult;
+    reg [31:0] MW_branch_out;
+    reg [31:0] MW_LoadData;
+    reg [31:0] MW_dmem_addr;
+    reg        MW_dmem_ren;
+    reg        MW_dmem_wen;
+    reg [3:0]  MW_dmem_mask;
+    reg [31:0] MW_dmem_wdata;
+    reg [31:0] MW_dmem_rdata;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            MW_rd <= 5'b0;
+            MW_rs1_data <= 32'b0;
+            MW_rs2_data <= 32'b0;
+            MW_ALUResult <= 32'b0;
+            MW_branch_out <= 32'b0;
+            MW_LoadData <= 32'b0;
+            MW_dmem_addr <= 32'b0;
+            MW_dmem_ren <= 1'b0;
+            MW_dmem_wen <= 1'b0;
+            MW_dmem_mask <= 4'b0;
+            MW_dmem_wdata <= 32'b0;
+            MW_dmem_rdata <= 32'b0;
+        end else begin
+            MW_rd <= EM_rd;
+            MW_rs1_data <= EM_rs1_data;
+            MW_rs2_data <= EM_rs2_data;
+            MW_ALUResult <= EM_ALUResult;
+            MW_branch_out <= EM_branch_out;
+            MW_LoadData <= load_data;
+            MW_dmem_addr <= o_dmem_addr;
+            MW_dmem_ren <= o_dmem_ren;
+            MW_dmem_wen <= o_dmem_wen;
+            MW_dmem_mask <= o_dmem_mask;
+            MW_dmem_wdata <= o_dmem_wdata;
+            MW_dmem_rdata <= i_dmem_rdata;
+        end
+    end
+
 
     /** Writeback **/
     writeback i_writeback (
@@ -467,29 +475,33 @@ module hart #(
         .PC(MW_PC),
         .branch_out(MW_branch_out),
         .ALUResult(MW_ALUResult),
-        .ReadData(MW_ReadData),
+        .ReadData(MW_LoadData),
         .MemtoReg(MW_reg_write_source_op),
         .pc_src_op(MW_pc_src_op),
-        .rd_out(MW_rd),
         .WriteData(WriteData),
-        .reg_write_wb(MW_reg_write),
-        .current_PC(MW_PC),
+        .current_PC(address_in),
         .jalr_op(MW_jalr_op)
     );
 
 
     // Declare retire signals and connect with assigns
-    assign o_retire_inst = i_imem_rdata;
+    assign o_retire_inst = MW_instr;
     assign o_retire_trap = 1'b0; 
-    assign o_retire_halt = (i_imem_rdata == 32'h00100073); // Ebreak instruction
-    assign o_retire_rs1_raddr = i_imem_rdata[19:15];
-    assign o_retire_rs2_raddr = i_imem_rdata[24:20];
-    assign o_retire_rs1_rdata = rs1_data;
-    assign o_retire_rs2_rdata = rs2_data;
+    assign o_retire_halt = (MW_instr == 32'h00100073); // Ebreak instruction
+    assign o_retire_rs1_raddr = MW_instr[19:15];
+    assign o_retire_rs2_raddr = MW_instr[24:20];
+    assign o_retire_rs1_rdata = MW_rs1_data;
+    assign o_retire_rs2_rdata = MW_rs2_data;
     assign o_retire_rd_waddr = MW_rd;
     assign o_retire_rd_wdata = WriteData;
     assign o_retire_pc = MW_PC;
     assign o_retire_next_pc = address_in;
+    assign o_retire_dmem_addr = MW_dmem_addr;
+    assign o_retire_dmem_ren = MW_dmem_ren;
+    assign o_retire_dmem_wen = MW_dmem_wen;
+    assign o_retire_dmem_mask = MW_dmem_mask;
+    assign o_retire_dmem_wdata = MW_dmem_wdata;
+    assign o_retire_dmem_rdata = MW_dmem_rdata;
 
 
 endmodule

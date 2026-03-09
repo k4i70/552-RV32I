@@ -1,4 +1,4 @@
-module hart #(
+module hart2 #(
     // After reset, the program counter (PC) should be initialized to this
     // address and start executing instructions from there.
     parameter RESET_ADDR = 32'h00000000

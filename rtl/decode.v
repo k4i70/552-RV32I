@@ -12,7 +12,6 @@ module decode #(
 	output wire [6:0] opcode, 
 	output wire [4:0] rd,
 	output wire [31:0] o_immediate,
-	output wire [5:0] o_format,
 	output wire [2:0] alu_op,
 	output wire [3:0] branch_op,
 	output wire mem_write,
@@ -24,19 +23,23 @@ module decode #(
 	output wire i_sub,
 	output wire i_unsigned,
 	output wire i_arith,
-	output wire [4:0] rs1_raddr,
-	output wire [4:0] rs2_raddr,
 	output wire jalr_op,
 	output wire alu_pc_op,
 	output wire mem_read,
-	output wire lui_op
+	output wire lui_op,
+	output wire [2:0] funct3,
+	input  wire [31:0] i_pc,
+	output wire [31:0] branch_out
 );
 
+
 // Immediate signals
-wire [2:0] funct3;
 wire [6:0] funct7;
 wire [4:0] i_rs1_raddr;
 wire [4:0] i_rs2_raddr;
+wire [5:0] o_format;
+wire [4:0] rs1_raddr;
+wire [4:0] rs2_raddr;
 
 // parameters for instruction formats, used for readability. 
 localparam R_TYPE = 6'b000001;
@@ -118,7 +121,24 @@ imm i_imm (
 	.o_immediate(o_immediate)
 );
 
+// Comparator for branch condition evaluation
+wire o_eq_dec, o_slt_dec;
+
+assign o_eq_dec  = (o_rs1_rdata == o_rs2_rdata);
+assign o_slt_dec = i_unsigned ? (o_rs1_rdata < o_rs2_rdata)
+            : ($signed(o_rs1_rdata) < $signed(o_rs2_rdata));
 
 
+branch i_branch (
+	.branch_op(branch_op),
+	.slt(o_slt_dec),
+	.equal(o_eq_dec),
+	.pc_src_op(pc_src_op),
+	.imm_in(o_immediate),
+	.jalr_op(jalr_op),
+	.alu_pc_op(alu_pc_op),
+	.pc_in(i_pc),
+	.branch_out(branch_out)
+);
 
 endmodule
