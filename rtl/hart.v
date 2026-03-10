@@ -484,6 +484,18 @@ module hart #(
     );
 
 
+    // Hazard detection unit, outputs stall signal to decode pipeline stage. 
+    hazardDetection i_hazardDetection (
+        .DE_rs1_raddr(DE_instr[19:15]),
+        .DE_rs2_raddr(DE_instr[24:20]),
+        .EM_rd(EM_rd),
+        .EM_reg_write(EM_reg_write),
+        .MW_rd(MW_rd),
+        .MW_reg_write(MW_reg_write),
+        .stall(stall)
+    );
+
+
     // Declare retire signals and connect with assigns
     assign o_retire_inst = MW_instr;
     assign o_retire_trap = 1'b0; 
