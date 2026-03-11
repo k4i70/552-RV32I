@@ -29,14 +29,14 @@ module decode #(
 	output wire lui_op,
 	output wire [2:0] funct3,
 	input  wire [31:0] i_pc,
-	output wire [31:0] branch_out
+	output wire [31:0] branch_out,
+	output wire [4:0] i_rs1_raddr,
+	output wire [4:0] i_rs2_raddr
 );
 
 
 // Immediate signals
 wire [6:0] funct7;
-wire [4:0] i_rs1_raddr;
-wire [4:0] i_rs2_raddr;
 wire [5:0] o_format;
 wire [4:0] rs1_raddr;
 wire [4:0] rs2_raddr;

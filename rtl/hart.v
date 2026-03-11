@@ -156,6 +156,8 @@ module hart #(
     wire [31:0] branch_out;
     wire [31:0] WriteData;
     wire [3:0] dmem_mask_base;
+    wire [4:0] i_rs1_raddr;
+    wire [4:0] i_rs2_raddr;
 
     wire mem_write, reg_write, alu_src_op, pc_src_op, i_sub, i_unsigned, i_arith;
     wire jalr_op, alu_pc_op, mem_read, lui_op;
@@ -220,7 +222,9 @@ module hart #(
         .lui_op(lui_op),
         .funct3(funct3),
         .i_pc(FD_PC),
-        .branch_out(branch_out)
+        .branch_out(branch_out),
+        .i_rs1_raddr(i_rs1_raddr),
+        .i_rs2_raddr(i_rs2_raddr)
     );
         
     // DE control signals
@@ -258,6 +262,23 @@ module hart #(
             DE_alu_pc_op <= 1'b0;
             DE_lui_op <= 1'b0;
             DE_PC <= 32'b0;
+        end else if (stall) begin
+            DE_reg_write_source_op <= 2'b0;
+            DE_reg_write <= 1'b0;
+            DE_pc_src_op <= 1'b0;
+            DE_jalr_op <= 1'b0;
+            DE_mem_write <= 1'b0;
+            DE_o_dmem_mask <= 4'b0;
+            DE_mem_read <= 1'b0;
+            DE_funct3 <= 3'b0;
+            DE_alu_op <= 3'b0;
+            DE_alu_src_op <= 1'b0;
+            DE_i_sub <= 1'b0;
+            DE_i_unsigned <= 1'b0;
+            DE_i_arith <= 1'b0;
+            DE_alu_pc_op <= 1'b0;
+            DE_lui_op <= 1'b0;
+            DE_PC <= DE_PC;
         end else begin
             DE_reg_write_source_op <= reg_write_source_op;
             DE_reg_write <= reg_write;
@@ -287,6 +308,13 @@ module hart #(
     reg [31:0] DE_instr;
     always @(posedge i_clk) begin
         if (i_rst) begin
+            DE_rd <= 5'b0;
+            DE_rs1_data <= 32'b0;
+            DE_rs2_data <= 32'b0;
+            DE_immediate <= 32'b0;
+            DE_branch_out <= 32'b0;
+            DE_instr <= 32'b0;
+        end else if (stall) begin
             DE_rd <= 5'b0;
             DE_rs1_data <= 32'b0;
             DE_rs2_data <= 32'b0;
@@ -486,8 +514,8 @@ module hart #(
 
     // Hazard detection unit, outputs stall signal to decode pipeline stage. 
     hazardDetection i_hazardDetection (
-        .DE_rs1_raddr(DE_instr[19:15]),
-        .DE_rs2_raddr(DE_instr[24:20]),
+        .i_rs1_raddr(i_rs1_raddr),
+        .i_rs2_raddr(i_rs2_raddr),
         .EM_rd(EM_rd),
         .EM_reg_write(EM_reg_write),
         .MW_rd(MW_rd),
