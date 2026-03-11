@@ -1,0 +1,3 @@
+[Group Member 1]: Andrew Miner
+[Group Member 2]: Trevor Hutchison
+[Group Member 3]: Mark Schimpf

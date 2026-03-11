@@ -41,10 +41,10 @@ module alu (
 );
     // Equality result. This is used externally to determine if a branch
     // should be taken.
-    wire        o_eq,
+    wire        o_eq;
     // Set less than result. This is used externally to determine if a branch
     // should be taken.
-    wire        o_slt
+    wire        o_slt;
 
     // Shift right arithmetic barrel shifter
     wire msb = i_op1[31];
