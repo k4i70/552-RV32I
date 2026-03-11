@@ -37,13 +37,14 @@ module alu (
     input  wire [31:0] i_op2,
     // 32-bit output result. Any carry out should be ignored.
     output wire [31:0] o_result,
+    
+);
     // Equality result. This is used externally to determine if a branch
     // should be taken.
-    output wire        o_eq,
+    wire        o_eq,
     // Set less than result. This is used externally to determine if a branch
     // should be taken.
-    output wire        o_slt
-);
+    wire        o_slt
 
     // Shift right arithmetic barrel shifter
     wire msb = i_op1[31];

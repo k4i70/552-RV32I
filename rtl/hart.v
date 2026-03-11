@@ -158,12 +158,13 @@ module hart #(
     wire [3:0] dmem_mask_base;
     wire [4:0] i_rs1_raddr;
     wire [4:0] i_rs2_raddr;
+    wire stall;
 
     wire mem_write, reg_write, alu_src_op, pc_src_op, i_sub, i_unsigned, i_arith;
     wire jalr_op, alu_pc_op, mem_read, lui_op;
 
     // Gate register writes with valid to prevent writes during the reset cycle
-    wire reg_write_wb_safe = MW_reg_write & o_retire_valid;
+    //wire reg_write_wb_safe = MW_reg_write & o_retire_valid;
 
     wire [31:0] load_data;
 
