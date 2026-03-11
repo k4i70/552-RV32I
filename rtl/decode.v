@@ -123,12 +123,12 @@ imm i_imm (
 
 // Comparator for branch condition evaluation
 wire o_eq_dec, o_slt_dec;
+wire op1_neg = i_rs1_rdata[31];
+wire op2_neg = i_rs2_rdata[31];
 
 wire signed_lt = (op1_neg && !op2_neg) ||
     ((op1_neg == op2_neg) && (i_rs1_rdata < i_rs2_rdata));
 
-wire op1_neg = i_rs1_rdata[31];
-wire op2_neg = i_rs2_rdata[31];
 
 assign o_eq_dec  = (o_rs1_rdata == o_rs2_rdata);
 assign o_slt_dec = (i_unsigned) ? ((i_rs1_rdata < i_rs2_rdata) ? 1'b1 : 1'b0) : (signed_lt ? 1'b1 : 1'b0);
