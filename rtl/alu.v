@@ -36,7 +36,7 @@ module alu (
     // Second 32-bit input operand.
     input  wire [31:0] i_op2,
     // 32-bit output result. Any carry out should be ignored.
-    output wire [31:0] o_result,
+    output wire [31:0] o_result
     
 );
     // Equality result. This is used externally to determine if a branch
