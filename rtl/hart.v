@@ -143,7 +143,8 @@ module hart #(
 
     // Intermediate signals
     wire [6:0] opcode;
-    wire [31:0] address_in;
+        wire [31:0] next_pc;
+        wire [31:0] wb_next_pc_unused;
     wire [2:0] funct3;
     wire [3:0] branch_op;
     wire [4:0] rd;
@@ -157,41 +158,61 @@ module hart #(
     wire [31:0] WriteData;
     wire [3:0] dmem_mask_base;
     
-    
-    
-
     wire mem_write, reg_write, alu_src_op, pc_src_op, i_sub, i_unsigned, i_arith;
     wire jalr_op, alu_pc_op, mem_read, lui_op;
-
-    // Gate register writes with valid to prevent writes during the reset cycle
-    //wire reg_write_wb_safe = MW_reg_write & o_retire_valid;
 
     wire [31:0] load_data;
     wire [4:0] i_rs1_raddr;
     wire [4:0] i_rs2_raddr;
     wire stall;
     reg [4:0] MW_rd;
+    reg MW_reg_write;
+
+    // Pipeline valid bits
+    reg FD_valid;
+    reg DE_valid;
+    reg EM_valid;
+    reg MW_valid;
+
+    // IFID pipeline register
+    reg [31:0] FD_i_instr;
+    reg [31:0] FD_PC;
+
+    // Branch res
+    wire branch_taken;
+    wire [31:0] branch_target;
+    assign branch_taken = FD_valid && !stall && (jalr_op || (branch_out != 32'h4));
+    assign branch_target = jalr_op ? ((rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
+    assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
 
 
     /** Instruction Fetch **/
     fetch i_fetch (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .address_in(address_in), 
-        .o_mem_raddr(o_imem_raddr),
-        .o_retire_valid(o_retire_valid)
+        .i_stall(stall && !branch_taken),
+        .address_in(next_pc), 
+        .o_mem_raddr(o_imem_raddr)
     );
 
 	// IFID pipeline register. 
-    reg [31:0] FD_i_instr;
-    reg [31:0] FD_PC;
     always @(posedge i_clk) begin
         if (i_rst) begin
-            FD_i_instr <= 32'b0;
+            FD_i_instr <= 32'h00000013;
             FD_PC <= RESET_ADDR;
-        end else begin
+            FD_valid <= 1'b0;
+        end else if (branch_taken) begin
+            FD_i_instr <= 32'h00000013;
+            FD_PC <= 32'b0;
+            FD_valid <= 1'b0;
+        end else if (!stall) begin
             FD_i_instr <= i_imem_rdata;
             FD_PC <= o_imem_raddr;
+            FD_valid <= 1'b1;
+        end else begin
+            FD_i_instr <= FD_i_instr;
+            FD_PC <= FD_PC;
+            FD_valid <= FD_valid;
         end
     end
 
@@ -218,7 +239,7 @@ module hart #(
         .i_arith(i_arith),
         .o_rs1_rdata(rs1_data),
         .o_rs2_rdata(rs2_data),
-        .reg_write_wb(reg_write_wb_safe),
+        .reg_write_wb(MW_reg_write),
         .i_rd_waddr(MW_rd),
         .i_rd_wdata(WriteData),
         .jalr_op(jalr_op),
@@ -267,6 +288,7 @@ module hart #(
             DE_alu_pc_op <= 1'b0;
             DE_lui_op <= 1'b0;
             DE_PC <= 32'b0;
+            DE_valid <= 1'b0;
         end else if (stall) begin
             DE_reg_write_source_op <= 2'b0;
             DE_reg_write <= 1'b0;
@@ -284,6 +306,7 @@ module hart #(
             DE_alu_pc_op <= 1'b0;
             DE_lui_op <= 1'b0;
             DE_PC <= DE_PC;
+            DE_valid <= 1'b0;
         end else begin
             DE_reg_write_source_op <= reg_write_source_op;
             DE_reg_write <= reg_write;
@@ -301,6 +324,7 @@ module hart #(
             DE_alu_pc_op <= alu_pc_op;
             DE_lui_op <= lui_op;
             DE_PC <= FD_PC;
+            DE_valid <= FD_valid;
         end
     end
 
@@ -376,6 +400,7 @@ module hart #(
             EM_funct3 <= 3'b0;
             EM_PC <= 32'b0;
             EM_instr <= 32'b0;
+            EM_valid <= 1'b0;
         end else begin
             EM_reg_write_source_op <= DE_reg_write_source_op;
             EM_reg_write <= DE_reg_write;
@@ -387,6 +412,7 @@ module hart #(
             EM_funct3 <= DE_funct3;
             EM_PC <= DE_PC;
             EM_instr <= DE_instr;
+            EM_valid <= DE_valid;
         end
     end
 
@@ -434,7 +460,6 @@ module hart #(
 
     // MW pipeline control signals
     reg [1:0] MW_reg_write_source_op;
-    reg MW_reg_write;
     reg MW_pc_src_op;
     reg MW_jalr_op;
     reg [31:0] MW_PC;
@@ -447,6 +472,7 @@ module hart #(
             MW_jalr_op <= 1'b0;
             MW_PC <= 32'b0;
             MW_instr <= 32'b0;
+            MW_valid <= 1'b0;
         end else begin
             MW_reg_write_source_op <= EM_reg_write_source_op;
             MW_reg_write <= EM_reg_write;
@@ -454,6 +480,7 @@ module hart #(
             MW_jalr_op <= EM_jalr_op;
             MW_PC <= EM_PC;
             MW_instr <= EM_instr;
+            MW_valid <= EM_valid;
         end
     end
 
@@ -511,7 +538,7 @@ module hart #(
         .MemtoReg(MW_reg_write_source_op),
         .pc_src_op(MW_pc_src_op),
         .WriteData(WriteData),
-        .current_PC(address_in),
+        .current_PC(wb_next_pc_unused),
         .jalr_op(MW_jalr_op)
     );
 
@@ -520,6 +547,8 @@ module hart #(
     hazardDetection i_hazardDetection (
         .i_rs1_raddr(i_rs1_raddr),
         .i_rs2_raddr(i_rs2_raddr),
+        .DE_rd(DE_rd),
+        .DE_reg_write(DE_reg_write),
         .EM_rd(EM_rd),
         .EM_reg_write(EM_reg_write),
         .MW_rd(MW_rd),
@@ -529,6 +558,7 @@ module hart #(
 
 
     // Declare retire signals and connect with assigns
+    assign o_retire_valid = MW_valid;
     assign o_retire_inst = MW_instr;
     assign o_retire_trap = 1'b0; 
     assign o_retire_halt = (MW_instr == 32'h00100073); // Ebreak instruction
@@ -539,7 +569,7 @@ module hart #(
     assign o_retire_rd_waddr = MW_rd;
     assign o_retire_rd_wdata = WriteData;
     assign o_retire_pc = MW_PC;
-    assign o_retire_next_pc = address_in;
+    assign o_retire_next_pc = wb_next_pc_unused;
     assign o_retire_dmem_addr = MW_dmem_addr;
     assign o_retire_dmem_ren = MW_dmem_ren;
     assign o_retire_dmem_wen = MW_dmem_wen;
