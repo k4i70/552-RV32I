@@ -118,21 +118,19 @@ module hart #(
     // writeback stage by this instruction. If rd is 5'd0, this field is
     // ignored and can be treated as a don't care.
     output wire [31:0] o_retire_rd_wdata,
+    output wire [31:0] o_retire_dmem_addr,
+    output wire [ 3:0] o_retire_dmem_mask,
+    output wire        o_retire_dmem_ren,
+    output wire        o_retire_dmem_wen,
+    output wire [31:0] o_retire_dmem_rdata,
+    output wire [31:0] o_retire_dmem_wdata,
     // The current program counter of the instruction being retired - i.e.
     // the instruction memory address that the instruction was fetched from.
     output wire [31:0] o_retire_pc,
     // the next program counter after the instruction is retired. For most
     // instructions, this is `o_retire_pc + 4`, but must be the branch or jump
     // target for *taken* branches and jumps.
-    output wire [31:0] o_retire_next_pc,
-
-    // New signals
-    output wire [31:0] o_retire_dmem_addr,
-    output wire o_retire_dmem_ren,
-    output wire o_retire_dmem_wen,
-    output wire [3:0] o_retire_dmem_mask,
-    output wire [31:0] o_retire_dmem_wdata,
-    output wire [31:0] o_retire_dmem_rdata
+    output wire [31:0] o_retire_next_pc
 
 `ifdef RISCV_FORMAL
     ,`RVFI_OUTPUTS,
@@ -143,8 +141,8 @@ module hart #(
 
     // Intermediate signals
     wire [6:0] opcode;
-        wire [31:0] next_pc;
-        wire [31:0] wb_next_pc_unused;
+    wire [31:0] next_pc;
+    wire [31:0] wb_next_pc_unused;
     wire [2:0] funct3;
     wire [3:0] branch_op;
     wire [4:0] rd;
@@ -167,6 +165,10 @@ module hart #(
     wire stall;
     reg [4:0] MW_rd;
     reg MW_reg_write;
+    wire [31:0] rs1_forwarded_data;
+    wire [31:0] rs2_forwarded_data;
+    wire [1:0] forward_rs1_cnrl;
+    wire [1:0] forward_rs2_cnrl;
 
     // Pipeline valid bits
     reg FD_valid;
@@ -182,7 +184,7 @@ module hart #(
     wire branch_taken;
     wire [31:0] branch_target;
     assign branch_taken = FD_valid && !stall && (jalr_op || (branch_out != 32'h4));
-    assign branch_target = jalr_op ? ((rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
+    assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
     assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
 
 
@@ -194,6 +196,30 @@ module hart #(
         .address_in(next_pc), 
         .o_mem_raddr(o_imem_raddr)
     );
+
+    // DE Forwarding Unit
+    DEForwardingUnit i_DEForwardingUnit (
+        .rs1_addr(DE_instr[19:15]),
+        .rs2_addr(DE_instr[24:20]),
+        .ex_rd_addr(EM_rd),
+        .ex_reg_write(EM_reg_write),
+        .mem_rd_addr(MW_rd),
+        .mem_reg_write(MW_reg_write),
+        .wb_rd_addr(MW_rd), 
+        .wb_reg_write(MW_reg_write),
+        .forward_rs1_cnrl(forward_rs1_cnrl),
+        .forward_rs2_cnrl(forward_rs2_cnrl)
+    );
+
+    // Branch forwarding muxes
+    wire [31:0] branch_rs1_data = (forward_rs1_cnrl == 2'b10) ? EM_ALUResult :
+                                  (forward_rs1_cnrl == 2'b01) ? MW_ALUResult :
+                                  (forward_rs1_cnrl == 2'b11) ? WriteData : rs1_data;
+
+    wire [31:0] branch_rs2_data = (forward_rs2_cnrl == 2'b10) ? EM_ALUResult :
+                                  (forward_rs2_cnrl == 2'b01) ? MW_ALUResult :
+                                  (forward_rs2_cnrl == 2'b11) ? WriteData : rs2_data;
+
 
 	// IFID pipeline register. 
     always @(posedge i_clk) begin
@@ -250,7 +276,25 @@ module hart #(
         .i_pc(FD_PC),
         .branch_out(branch_out),
         .i_rs1_raddr(i_rs1_raddr),
-        .i_rs2_raddr(i_rs2_raddr)
+        .i_rs2_raddr(i_rs2_raddr),
+        .branch_rs1_data(branch_rs1_data),
+        .branch_rs2_data(branch_rs2_data)
+    );
+
+    // EX-EX and EX-MEM forwarding unit
+    forwardingUnit i_forwardingUnit (
+        .rs1_forwarded_data(rs1_forwarded_data),
+        .rs2_forwarded_data(rs2_forwarded_data),
+        .DE_rs1_data(DE_rs1_data),
+        .DE_rs2_data(DE_rs2_data),
+        .rs1_addr(DE_instr[19:15]),
+        .rs2_addr(DE_instr[24:20]),
+        .ex_dest_addr(EM_rd),
+        .mem_dest_addr(MW_rd),
+        .ex_reg_write(EM_reg_write),
+        .mem_reg_write(MW_reg_write),
+        .mem_data(WriteData),
+        .ex_data(EM_ALUResult)
     );
         
     // DE control signals
@@ -352,13 +396,15 @@ module hart #(
             DE_instr <= 32'b0;
         end else begin
             DE_rd <= rd;
-            DE_rs1_data <= rs1_data;
-            DE_rs2_data <= rs2_data;
+            DE_rs1_data <= rs1_forwarded_data;
+            DE_rs2_data <= rs2_forwarded_data;
             DE_immediate <= immediate;
             DE_branch_out <= branch_out;
             DE_instr <= FD_i_instr;
         end
     end
+
+
 
     /** Execute **/
     execute i_execute (
@@ -548,12 +594,8 @@ module hart #(
         .i_rs1_raddr(i_rs1_raddr),
         .i_rs2_raddr(i_rs2_raddr),
         .DE_rd(DE_rd),
-        .DE_reg_write(DE_reg_write),
-        .EM_rd(EM_rd),
-        .EM_reg_write(EM_reg_write),
-        .MW_rd(MW_rd),
-        .MW_reg_write(MW_reg_write),
-        .stall(stall)
+        .stall(stall),
+        .DE_mem_read(DE_mem_read)
     );
 
 

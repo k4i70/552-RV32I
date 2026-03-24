@@ -31,7 +31,9 @@ module decode #(
 	input  wire [31:0] i_pc,
 	output wire [31:0] branch_out,
 	output wire [4:0] i_rs1_raddr,
-	output wire [4:0] i_rs2_raddr
+	output wire [4:0] i_rs2_raddr,
+	input wire [31:0] branch_rs1_data,
+	input wire [31:0] branch_rs2_data
 );
 
 
@@ -123,17 +125,15 @@ imm i_imm (
 
 // Comparator for branch condition evaluation
 wire o_eq_dec, o_slt_dec;
-wire op1_neg = o_rs1_rdata[31];
-wire op2_neg = o_rs2_rdata[31];
+wire op1_neg = branch_rs1_data[31];
+wire op2_neg = branch_rs2_data[31];
 
 wire signed_lt = (op1_neg && !op2_neg) ||
-    ((op1_neg == op2_neg) && (o_rs1_rdata < o_rs2_rdata));
+    ((op1_neg == op2_neg) && (branch_rs1_data < branch_rs2_data));
 
 
-assign o_eq_dec  = (o_rs1_rdata == o_rs2_rdata);
-assign o_slt_dec = (i_unsigned) ? ((o_rs1_rdata < o_rs2_rdata) ? 1'b1 : 1'b0) : (signed_lt ? 1'b1 : 1'b0);
-
-
+assign o_eq_dec  = (branch_rs1_data == branch_rs2_data);
+assign o_slt_dec = (i_unsigned) ? ((branch_rs1_data < branch_rs2_data) ? 1'b1 : 1'b0) : (signed_lt ? 1'b1 : 1'b0);
 
 branch i_branch (
 	.branch_op(branch_op),
