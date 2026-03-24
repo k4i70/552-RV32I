@@ -364,8 +364,8 @@ module hart #(
             DE_instr <= 32'b0;
         end else begin
             DE_rd <= rd;
-            DE_rs1_data <= rs1_forwarded_data;
-            DE_rs2_data <= rs2_forwarded_data;
+            DE_rs1_data <= rs1_data;
+            DE_rs2_data <= rs2_data;
             DE_immediate <= immediate;
             DE_branch_out <= branch_out;
             DE_instr <= FD_i_instr;
@@ -378,8 +378,8 @@ module hart #(
     execute i_execute (
         .alu_src_op(DE_alu_src_op),
         .alu_op(DE_alu_op),
-        .rs1_data(DE_rs1_data),
-        .rs2_data(DE_rs2_data),
+        .rs1_data(rs1_forwarded_data),
+        .rs2_data(rs2_forwarded_data),
         .immediate(DE_immediate),
         .alu_result(alu_result),
         .i_sub(DE_i_sub),
