@@ -445,8 +445,8 @@ module hart #(
             EM_branch_out <= 32'b0;
         end else begin
             EM_rd <= DE_rd;
-            EM_rs1_data <= DE_rs1_data;
-            EM_rs2_data <= DE_rs2_data;
+            EM_rs1_data <= rs1_forwarded_data;
+            EM_rs2_data <= rs2_forwarded_data;
             EM_ALUResult <= alu_result;
             EM_branch_out <= DE_branch_out;
         end
