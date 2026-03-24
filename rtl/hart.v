@@ -169,6 +169,9 @@ module hart #(
     wire [31:0] rs2_forwarded_data;
     wire [1:0] forward_rs1_cnrl;
     wire [1:0] forward_rs2_cnrl;
+    wire [31:0] branch_rs1_data;
+    wire [31:0] branch_rs2_data;
+
 
     // Pipeline valid bits
     reg FD_valid;
@@ -197,28 +200,7 @@ module hart #(
         .o_mem_raddr(o_imem_raddr)
     );
 
-    // DE Forwarding Unit
-    DEForwardingUnit i_DEForwardingUnit (
-        .rs1_addr(DE_instr[19:15]),
-        .rs2_addr(DE_instr[24:20]),
-        .ex_rd_addr(EM_rd),
-        .ex_reg_write(EM_reg_write),
-        .mem_rd_addr(MW_rd),
-        .mem_reg_write(MW_reg_write),
-        .wb_rd_addr(MW_rd), 
-        .wb_reg_write(MW_reg_write),
-        .forward_rs1_cnrl(forward_rs1_cnrl),
-        .forward_rs2_cnrl(forward_rs2_cnrl)
-    );
-
-    // Branch forwarding muxes
-    wire [31:0] branch_rs1_data = (forward_rs1_cnrl == 2'b10) ? EM_ALUResult :
-                                  (forward_rs1_cnrl == 2'b01) ? MW_ALUResult :
-                                  (forward_rs1_cnrl == 2'b11) ? WriteData : rs1_data;
-
-    wire [31:0] branch_rs2_data = (forward_rs2_cnrl == 2'b10) ? EM_ALUResult :
-                                  (forward_rs2_cnrl == 2'b01) ? MW_ALUResult :
-                                  (forward_rs2_cnrl == 2'b11) ? WriteData : rs2_data;
+    
 
 
 	// IFID pipeline register. 
@@ -281,21 +263,7 @@ module hart #(
         .branch_rs2_data(branch_rs2_data)
     );
 
-    // EX-EX and EX-MEM forwarding unit
-    forwardingUnit i_forwardingUnit (
-        .rs1_forwarded_data(rs1_forwarded_data),
-        .rs2_forwarded_data(rs2_forwarded_data),
-        .DE_rs1_data(DE_rs1_data),
-        .DE_rs2_data(DE_rs2_data),
-        .rs1_addr(DE_instr[19:15]),
-        .rs2_addr(DE_instr[24:20]),
-        .ex_dest_addr(EM_rd),
-        .mem_dest_addr(MW_rd),
-        .ex_reg_write(EM_reg_write),
-        .mem_reg_write(MW_reg_write),
-        .mem_data(WriteData),
-        .ex_data(EM_ALUResult)
-    );
+    
         
     // DE control signals
     reg [1:0] DE_reg_write_source_op;
@@ -596,6 +564,46 @@ module hart #(
         .DE_rd(DE_rd),
         .stall(stall),
         .DE_mem_read(DE_mem_read)
+    );
+
+    // FORWARDING
+    // DE Forwarding Unit
+    DEForwardingUnit i_DEForwardingUnit (
+        .rs1_addr(DE_instr[19:15]),
+        .rs2_addr(DE_instr[24:20]),
+        .ex_rd_addr(EM_rd),
+        .ex_reg_write(EM_reg_write),
+        .mem_rd_addr(MW_rd),
+        .mem_reg_write(MW_reg_write),
+        .wb_rd_addr(MW_rd), 
+        .wb_reg_write(MW_reg_write),
+        .forward_rs1_cnrl(forward_rs1_cnrl),
+        .forward_rs2_cnrl(forward_rs2_cnrl)
+    );
+
+    // Branch forwarding muxes
+    assign branch_rs1_data = (forward_rs1_cnrl == 2'b10) ? EM_ALUResult :
+                                  (forward_rs1_cnrl == 2'b01) ? MW_ALUResult :
+                                  (forward_rs1_cnrl == 2'b11) ? WriteData : rs1_data;
+
+    assign branch_rs2_data = (forward_rs2_cnrl == 2'b10) ? EM_ALUResult :
+                                  (forward_rs2_cnrl == 2'b01) ? MW_ALUResult :
+                                  (forward_rs2_cnrl == 2'b11) ? WriteData : rs2_data;
+
+    // EX-EX and EX-MEM forwarding unit
+    forwardingUnit i_forwardingUnit (
+        .rs1_forwarded_data(rs1_forwarded_data),
+        .rs2_forwarded_data(rs2_forwarded_data),
+        .DE_rs1_data(DE_rs1_data),
+        .DE_rs2_data(DE_rs2_data),
+        .rs1_addr(DE_instr[19:15]),
+        .rs2_addr(DE_instr[24:20]),
+        .ex_dest_addr(EM_rd),
+        .mem_dest_addr(MW_rd),
+        .ex_reg_write(EM_reg_write),
+        .mem_reg_write(MW_reg_write),
+        .mem_data(WriteData),
+        .ex_data(EM_ALUResult)
     );
 
 
