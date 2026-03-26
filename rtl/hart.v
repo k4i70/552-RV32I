@@ -563,18 +563,22 @@ module hart #(
         .i_rs2_raddr(i_rs2_raddr),
         .DE_rd(DE_rd),
         .stall(stall),
-        .DE_mem_read(DE_mem_read)
+        .DE_mem_read(DE_mem_read),
+        .DE_reg_write(DE_reg_write),
+        .EM_rd(EM_rd),
+        .EM_mem_read(EM_mem_read),
+        .opcode(opcode)
     );
 
     // FORWARDING
     // DE Forwarding Unit
     DEForwardingUnit i_DEForwardingUnit (
-        .rs1_addr(DE_instr[19:15]),
-        .rs2_addr(DE_instr[24:20]),
+        .rs1_addr(i_rs1_raddr),
+        .rs2_addr(i_rs2_raddr),
         .ex_rd_addr(EM_rd),
         .ex_reg_write(EM_reg_write),
-        .mem_rd_addr(MW_rd),
-        .mem_reg_write(MW_reg_write),
+        .mem_rd_addr(5'b0),
+        .mem_reg_write(1'b0),
         .wb_rd_addr(MW_rd), 
         .wb_reg_write(MW_reg_write),
         .forward_rs1_cnrl(forward_rs1_cnrl),
