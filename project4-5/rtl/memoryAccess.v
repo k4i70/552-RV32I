@@ -1,0 +1,70 @@
+module memoryAccess (
+	input wire mem_write,
+	input wire [31:0] alu_result, 
+	input wire [31:0] rs2_data, // Needs this for store instructions
+	input wire [3:0] dmem_mask_base,
+	output wire [31:0] o_dmem_addr, 
+	output wire [31:0] o_dmem_wdata,
+	output wire o_dmem_ren,
+	output wire o_dmem_wen,
+	input wire [31:0] i_dmem_rdata,
+	output wire [3:0] o_dmem_mask,
+	input wire mem_read,
+	input wire [2:0] funct3,
+	output wire [31:0] o_load_data
+);
+
+wire [1:0] byte_offset = alu_result[1:0];
+
+// Align ALU result to address
+assign o_dmem_addr = {alu_result[31:2], 2'b00};
+
+// Barrel shifter to shift dmem_mask when asserted
+assign o_dmem_mask = (byte_offset == 2'b00) ? dmem_mask_base :
+					(byte_offset == 2'b01) ? ({dmem_mask_base[2:0], 1'b0}) :
+					(byte_offset == 2'b10) ? ({dmem_mask_base[1:0], 2'b00}) :
+											 ({dmem_mask_base[0], 3'b000});
+
+wire [31:0] wdata_shifted;
+barrel_shifter i_barrel_shifter (
+	.in(rs2_data),
+	.shft_amt(byte_offset),
+	.out(wdata_shifted),
+	.direction(1'b1)
+);
+
+assign o_dmem_wdata = wdata_shifted;
+
+// Address is already aligned above via {alu_result[31:2], 2'b00}
+
+wire [31:0] rdata_shifted;
+barrel_shifter i_barrel_shifter_rdata (
+	.in(i_dmem_rdata),
+	.shft_amt(byte_offset),
+	.out(rdata_shifted),
+	.direction(1'b0)
+);
+
+// For now, just read values when mem_write is low
+assign o_dmem_ren = mem_read;
+assign o_dmem_wen = mem_write;  
+
+// Sign extend byte and half word to full length.
+// Use funct3[2] to determine unsigned (LBU=100, LHU=101) vs signed (LB=000, LH=001)
+wire load_unsigned = funct3[2];
+
+wire [31:0] load_byte = load_unsigned ? {24'b0, rdata_shifted[7:0]} : 
+						{{24{rdata_shifted[7]}}, rdata_shifted[7:0]};
+
+wire [31:0] load_half = load_unsigned ? {16'b0, rdata_shifted[15:0]} : 
+						{{16{rdata_shifted[15]}}, rdata_shifted[15:0]};
+
+wire [31:0] load_word = rdata_shifted;
+
+assign o_load_data = (funct3[1:0] == 2'b00) ? load_byte :
+					 (funct3[1:0] == 2'b01) ? load_half :
+					 load_word;
+
+
+
+endmodule

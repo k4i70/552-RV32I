@@ -1,0 +1,41 @@
+module writeback #(
+	parameter RESET_ADDR = 32'h00000000
+)(
+
+	//control signals
+	input wire RegWrite,
+	input wire [1:0] MemtoReg,
+	input wire pc_src_op,
+	input wire jalr_op,
+
+	//register signals
+	input wire [4:0] rd,
+
+	
+	//data signals
+	input wire [31:0] ReadData,
+	input wire [31:0] ALUResult,
+	input wire [31:0] branch_out,
+
+	//PC signals
+	input wire [31:0] PC,
+
+
+	//output signals
+	output wire [31:0] WriteData,
+
+	//output control signals
+	output wire [31:0] current_PC
+);
+
+
+// Write back Data MUX
+assign WriteData = (MemtoReg == 2'b01) ? PC + 32'h4 :
+					(MemtoReg == 2'b10)? ReadData:
+										ALUResult;
+
+
+assign current_PC = jalr_op ? (ALUResult & ~32'h1) :
+	(pc_src_op) ? PC + branch_out : PC + 32'h4;
+
+endmodule
