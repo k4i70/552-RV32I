@@ -3,6 +3,7 @@ module memoryAccess (
 	input wire [31:0] alu_result, 
 	input wire [31:0] rs2_data, // Needs this for store instructions
 	input wire [3:0] dmem_mask_base,
+	input wire i_dmem_ready,
 	output wire [31:0] o_dmem_addr, 
 	output wire [31:0] o_dmem_wdata,
 	output wire o_dmem_ren,
@@ -46,8 +47,9 @@ barrel_shifter i_barrel_shifter_rdata (
 );
 
 // For now, just read values when mem_write is low
-assign o_dmem_ren = mem_read;
-assign o_dmem_wen = mem_write;  
+// i_dmem_ready used for multi-cycle memory to ensure we only read valid data
+assign o_dmem_ren = mem_read && i_dmem_ready;
+assign o_dmem_wen = mem_write && i_dmem_ready;  
 
 // Sign extend byte and half word to full length.
 // Use funct3[2] to determine unsigned (LBU=100, LHU=101) vs signed (LB=000, LH=001)

@@ -19,6 +19,12 @@ module hart #(
     output wire [31:0] o_imem_raddr,
     // Instruction word fetched from memory, available on the same cycle.
     input  wire [31:0] i_imem_rdata,
+    // Multi-cycle memory signals
+    input  wire        i_imem_ready,
+    output wire        o_imem_ren,
+    input  wire        i_imem_valid,
+    input  wire        i_dmem_ready,
+    input  wire        i_dmem_valid,
     // Data memory accesses go through a separate read/write data memory (dmem)
     // that is shared between read (load) and write (stored). The port accepts
     // a 32-bit address, read or write enable, and mask (explained below) each
@@ -179,6 +185,17 @@ module hart #(
     reg EM_valid;
     reg MW_valid;
 
+    // Memory request tracking
+    reg imem_request_pending;
+    reg dmem_request_pending;
+    
+    // Memory wait signals
+    wire imem_wait = imem_request_pending && !i_imem_valid;
+    wire dmem_wait = dmem_request_pending && !i_dmem_valid;
+    
+    // Load data buffer for multi-cycle latency
+    reg [31:0] load_data_buffer;
+
     // IFID pipeline register
     reg [31:0] FD_i_instr;
     reg [31:0] FD_PC;
@@ -189,6 +206,9 @@ module hart #(
     assign branch_taken = FD_valid && !stall && (jalr_op || (branch_out != 32'h4));
     assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
     assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
+
+    // Instruction memory request protocol for multi-cycle memory
+    assign o_imem_ren = !imem_request_pending && i_imem_ready;
 
 
     /** Instruction Fetch **/
@@ -203,6 +223,43 @@ module hart #(
     
 
 
+    // Instruction memory request tracking
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            imem_request_pending <= 1'b0;
+        end
+        else if (o_imem_ren) begin
+            // We're issuing a new request this cycle
+            imem_request_pending <= 1'b1;
+        end
+        else if (i_imem_valid) begin
+            // Data has arrived, request is complete
+            imem_request_pending <= 1'b0;
+        end
+    end
+
+    // Data memory request tracking
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            dmem_request_pending <= 1'b0;
+        end
+        else if ((o_dmem_ren || o_dmem_wen) && i_dmem_ready) begin
+            // We're issuing a new request this cycle
+            dmem_request_pending <= 1'b1;
+        end
+        else if (i_dmem_valid) begin
+            // Data has arrived (for reads) or write is complete
+            dmem_request_pending <= 1'b0;
+        end
+    end
+
+    // Load data buffering for multi-cycle memory latency
+    always @(posedge i_clk) begin
+        if (i_dmem_valid) begin
+            load_data_buffer <= i_dmem_rdata;
+        end
+    end
+
 	// IFID pipeline register. 
     always @(posedge i_clk) begin
         if (i_rst) begin
@@ -213,7 +270,7 @@ module hart #(
             FD_i_instr <= 32'h00000013;
             FD_PC <= 32'b0;
             FD_valid <= 1'b0;
-        end else if (!stall) begin
+        end else if (!stall && i_imem_valid) begin
             FD_i_instr <= i_imem_rdata;
             FD_PC <= o_imem_raddr;
             FD_valid <= 1'b1;
@@ -459,6 +516,7 @@ module hart #(
         .mem_write(EM_mem_write),
         .alu_result(EM_ALUResult), 
         .rs2_data(EM_rs2_data),
+        .i_dmem_ready(i_dmem_ready),
         .o_dmem_addr(o_dmem_addr), 
         .o_dmem_wdata(o_dmem_wdata),
         .o_dmem_ren(o_dmem_ren),
@@ -530,7 +588,8 @@ module hart #(
             MW_rs2_data <= EM_rs2_data;
             MW_ALUResult <= EM_ALUResult;
             MW_branch_out <= EM_branch_out;
-            MW_LoadData <= load_data;
+            // Use buffered load data when available
+            MW_LoadData <= (i_dmem_valid || !dmem_request_pending) ? load_data : load_data_buffer;
             MW_dmem_addr <= o_dmem_addr;
             MW_dmem_ren <= o_dmem_ren;
             MW_dmem_wen <= o_dmem_wen;
@@ -563,7 +622,14 @@ module hart #(
         .i_rs2_raddr(i_rs2_raddr),
         .DE_rd(DE_rd),
         .stall(stall),
-        .DE_mem_read(DE_mem_read)
+        .DE_mem_read(DE_mem_read),
+        .DE_reg_write(DE_reg_write),
+        .DE_mem_write(DE_mem_write),
+        .EM_rd(EM_rd),
+        .EM_mem_read(EM_mem_read),
+        .opcode(opcode),
+        .imem_wait(imem_wait),
+        .dmem_wait(dmem_wait)
     );
 
     // FORWARDING
