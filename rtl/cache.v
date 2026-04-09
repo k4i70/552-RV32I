@@ -91,7 +91,204 @@ module cache (
     reg [1:0] valid [DEPTH - 1:0];
     reg       lru   [DEPTH - 1:0];
 
-    // Fill in your implementation here.
+    // Address decoding
+    wire [T-1:0]     req_tag      = i_req_addr[31:9];
+    wire [S-1:0]     req_set      = i_req_addr[8:4];
+    wire [3:0]       req_offset   = i_req_addr[3:0];
+    wire [1:0]       req_word_off = i_req_addr[3:2];
+    
+    // Hit/Miss detection 
+    wire way0_match = valid[req_set][0] && (tags0[req_set] == req_tag);
+    wire way1_match = valid[req_set][1] && (tags1[req_set] == req_tag);
+    wire hit = way0_match || way1_match;
+    wire hit_way = way1_match;  // 0 if way0 hits, 1 if way1 hits
+    
+    // Read path
+    wire [31:0] way0_data = datas0[req_set][req_word_off];
+    wire [31:0] way1_data = datas1[req_set][req_word_off];
+    wire [31:0] cache_read_data = hit_way ? way1_data : way0_data;
+    
+    // Apply read mask
+    wire [31:0] masked_read_data;
+    assign masked_read_data[31:24] = i_req_mask[3] ? cache_read_data[31:24] : 8'h00;
+    assign masked_read_data[23:16] = i_req_mask[2] ? cache_read_data[23:16] : 8'h00;
+    assign masked_read_data[15: 8] = i_req_mask[1] ? cache_read_data[15: 8] : 8'h00;
+    assign masked_read_data[ 7: 0] = i_req_mask[0] ? cache_read_data[ 7: 0] : 8'h00;
+    
+    // Write data mask: for writes during miss fill
+    wire [31:0] write_word;
+    assign write_word[31:24] = miss_write_mask[3] ? miss_write_data[31:24] : 8'h00;
+    assign write_word[23:16] = miss_write_mask[2] ? miss_write_data[23:16] : 8'h00;
+    assign write_word[15: 8] = miss_write_mask[1] ? miss_write_data[15: 8] : 8'h00;
+    assign write_word[ 7: 0] = miss_write_mask[0] ? miss_write_data[ 7: 0] : 8'h00;
+    
+    // Miss handling state machine
+    reg state;
+    localparam READY = 1'b0;
+    localparam MISS  = 1'b1;
+    
+    reg [S-1:0] miss_set;
+    reg [T-1:0] miss_tag;
+    reg [3:0]   mem_req_offset;
+    reg [3:0]   words_filled;   // Tracks which words have been filled (0-3)
+    reg         miss_write;
+    reg [31:0]  miss_write_data;
+    reg [3:0]   miss_write_mask;
+    reg [1:0]   miss_write_word_off;  // Which word was being written
+    
+    // Determine replacement way on miss
+    wire victim_way = lru[miss_set];  // 0 if way0 is LRU, 1 if way1 is LRU
+    
+    // Memory request generation
+    // During miss handling, request words sequentially from memory
+    wire [31:0] mem_req_addr = {miss_tag, miss_set, mem_req_offset};
+    
+    // For write-through on hits, address is the request address; for misses, it's from mem_req
+    wire [31:0] write_req_addr = (hit && i_req_wen) ? i_req_addr : mem_req_addr;
+    wire [31:0] write_req_data = (hit && i_req_wen) ? i_req_wdata : write_word;
+    
+    assign o_busy = (state == MISS);
+    assign o_mem_addr = write_req_addr;
+    
+    // Memory reads: only for cache misses during fill
+    assign o_mem_ren = (state == MISS) && (words_filled < 4) && i_mem_ready;
+    
+    // Memory writes: write hits (write-through) or write misses (after fetch)
+    assign o_mem_wen = ((hit && i_req_wen && i_mem_ready) ||
+                        ((state == MISS) && miss_write && (words_filled == 4) && i_mem_ready));
+    
+    // Write data: the word being written
+    assign o_mem_wdata = write_req_data;
+    
+    // Cache update on memory return
+    // Output assignment
+    assign o_res_rdata = hit ? masked_read_data : 32'h00000000;
+    
+    // Sequential logic - state machine and cache updates
+    integer way_idx;
+    
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            state <= READY;
+            words_filled <= 4'h0;
+            mem_req_offset <= 4'h0;
+            miss_set <= 5'h0;
+            miss_tag <= 23'h0;
+            miss_write <= 1'b0;
+            miss_write_data <= 32'h0;
+            miss_write_mask <= 4'h0;
+            miss_write_word_off <= 2'h0;
+            
+            // Initialize cache as empty
+            for (way_idx = 0; way_idx < DEPTH; way_idx = way_idx + 1) begin
+                valid[way_idx] <= 2'b00;
+                lru[way_idx] <= 1'b0;
+            end
+        end
+        else begin
+            case (state)
+                READY: begin
+                    if (i_req_ren || i_req_wen) begin
+                        if (hit) begin
+                            // Cache hit
+                            if (i_req_wen) begin
+                                // Hit on write: update cache with mask and write to memory (write-through)
+                                if (way0_match) begin
+                                    // Update way 0 with masked write
+                                    if (i_req_mask[3]) datas0[req_set][req_word_off][31:24] <= i_req_wdata[31:24];
+                                    if (i_req_mask[2]) datas0[req_set][req_word_off][23:16] <= i_req_wdata[23:16];
+                                    if (i_req_mask[1]) datas0[req_set][req_word_off][15: 8] <= i_req_wdata[15: 8];
+                                    if (i_req_mask[0]) datas0[req_set][req_word_off][ 7: 0] <= i_req_wdata[ 7: 0];
+                                end else begin
+                                    // Update way 1 with masked write
+                                    if (i_req_mask[3]) datas1[req_set][req_word_off][31:24] <= i_req_wdata[31:24];
+                                    if (i_req_mask[2]) datas1[req_set][req_word_off][23:16] <= i_req_wdata[23:16];
+                                    if (i_req_mask[1]) datas1[req_set][req_word_off][15: 8] <= i_req_wdata[15: 8];
+                                    if (i_req_mask[0]) datas1[req_set][req_word_off][ 7: 0] <= i_req_wdata[ 7: 0];
+                                end
+                            end
+                            
+                            // Update LRU: accessed way is now MRU
+                            lru[req_set] <= !hit_way;
+                        end
+                        else begin
+                            // Cache miss: need to fetch the line
+                            state <= MISS;
+                            miss_set <= req_set;
+                            miss_tag <= req_tag;
+                            miss_write <= i_req_wen;
+                            miss_write_data <= i_req_wdata;
+                            miss_write_mask <= i_req_mask;
+                            miss_write_word_off <= req_word_off;
+                            words_filled <= 4'h0;
+                            mem_req_offset <= 4'h0;
+                        end
+                    end
+                end
+                
+                MISS: begin
+                    // Fill cache line word by word (for both read and write misses)
+                    if (words_filled < 4) begin
+                        // Fetch phase: get all 4 words from memory
+                        if (i_mem_valid) begin
+                            // Word received from memory
+                            if (victim_way == 1'b0) begin
+                                datas0[miss_set][words_filled] <= i_mem_rdata;
+                            end else begin
+                                datas1[miss_set][words_filled] <= i_mem_rdata;
+                            end
+                            
+                            if (words_filled == 3) begin
+                                // All words received, allocate line in cache
+                                if (victim_way == 1'b0) begin
+                                    tags0[miss_set] <= miss_tag;
+                                    valid[miss_set][0] <= 1'b1;
+                                    // For write misses, merge in the write data to the appropriate word
+                                    if (miss_write) begin
+                                        if (miss_write_mask[3]) datas0[miss_set][miss_write_word_off][31:24] <= miss_write_data[31:24];
+                                        if (miss_write_mask[2]) datas0[miss_set][miss_write_word_off][23:16] <= miss_write_data[23:16];
+                                        if (miss_write_mask[1]) datas0[miss_set][miss_write_word_off][15: 8] <= miss_write_data[15: 8];
+                                        if (miss_write_mask[0]) datas0[miss_set][miss_write_word_off][ 7: 0] <= miss_write_data[ 7: 0];
+                                    end
+                                end else begin
+                                    tags1[miss_set] <= miss_tag;
+                                    valid[miss_set][1] <= 1'b1;
+                                    // For write misses, merge in the write data to the appropriate word
+                                    if (miss_write) begin
+                                        if (miss_write_mask[3]) datas1[miss_set][miss_write_word_off][31:24] <= miss_write_data[31:24];
+                                        if (miss_write_mask[2]) datas1[miss_set][miss_write_word_off][23:16] <= miss_write_data[23:16];
+                                        if (miss_write_mask[1]) datas1[miss_set][miss_write_word_off][15: 8] <= miss_write_data[15: 8];
+                                        if (miss_write_mask[0]) datas1[miss_set][miss_write_word_off][ 7: 0] <= miss_write_data[ 7: 0];
+                                    end
+                                end
+                                lru[miss_set] <= !victim_way;
+                                
+                                if (miss_write) begin
+                                    // write the word to memory
+                                    words_filled <= 4'h4;
+                                    mem_req_offset <= miss_write_word_off << 2;  // Set address to written word
+                                end else begin
+                                    // Hit
+                                    state <= READY;
+                                end
+                            end else begin
+                                words_filled <= words_filled + 1;
+                                mem_req_offset <= mem_req_offset + 4'h4;
+                            end
+                        end
+                    end
+                    else if (miss_write) begin
+                        // Write phase: send the modified word to memory
+                        if (i_mem_valid) begin
+                            // Write complete
+                            state <= READY;
+                        end
+                    end
+                end
+            endcase
+        end
+    end
+
 endmodule
 
 `default_nettype wire
