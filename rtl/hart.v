@@ -189,6 +189,9 @@ module hart #(
     reg imem_request_pending;
     reg dmem_request_pending;
     
+    // Capture the address of the instruction being requested for multi-cycle latency
+    reg [31:0] imem_requested_addr;
+    
     // Memory wait signals
     wire imem_wait = imem_request_pending && !i_imem_valid;
     wire dmem_wait = dmem_request_pending && !i_dmem_valid;
@@ -208,7 +211,8 @@ module hart #(
     assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
 
     // Instruction memory request protocol for multi-cycle memory
-    assign o_imem_ren = !imem_request_pending && i_imem_ready;
+    // Issue request whenever memory is ready (supports pipelined requests)
+    assign o_imem_ren = i_imem_ready;
 
 
     /** Instruction Fetch **/
@@ -227,10 +231,12 @@ module hart #(
     always @(posedge i_clk) begin
         if (i_rst) begin
             imem_request_pending <= 1'b0;
+            imem_requested_addr <= 32'b0;
         end
         else if (o_imem_ren) begin
-            // We're issuing a new request this cycle
+            // We're issuing a new request this cycle - save the address
             imem_request_pending <= 1'b1;
+            imem_requested_addr <= o_imem_raddr;
         end
         else if (i_imem_valid) begin
             // Data has arrived, request is complete
@@ -272,12 +278,16 @@ module hart #(
             FD_valid <= 1'b0;
         end else if (!stall && i_imem_valid) begin
             FD_i_instr <= i_imem_rdata;
-            FD_PC <= o_imem_raddr;
+            FD_PC <= imem_requested_addr;  // Use the address that was originally requested
             FD_valid <= 1'b1;
-        end else begin
+        end else if (stall) begin
+            // Keep instruction while stalled
             FD_i_instr <= FD_i_instr;
             FD_PC <= FD_PC;
             FD_valid <= FD_valid;
+        end else begin
+            // Instruction advanced to next stage, FD is now empty
+            FD_valid <= 1'b0;
         end
     end
 
@@ -359,23 +369,23 @@ module hart #(
             DE_PC <= 32'b0;
             DE_valid <= 1'b0;
         end else if (stall) begin
-            DE_reg_write_source_op <= 2'b0;
-            DE_reg_write <= 1'b0;
-            DE_pc_src_op <= 1'b0;
-            DE_jalr_op <= 1'b0;
-            DE_mem_write <= 1'b0;
-            DE_o_dmem_mask <= 4'b0;
-            DE_mem_read <= 1'b0;
-            DE_funct3 <= 3'b0;
-            DE_alu_op <= 3'b0;
-            DE_alu_src_op <= 1'b0;
-            DE_i_sub <= 1'b0;
-            DE_i_unsigned <= 1'b0;
-            DE_i_arith <= 1'b0;
-            DE_alu_pc_op <= 1'b0;
-            DE_lui_op <= 1'b0;
+            DE_reg_write_source_op <= DE_reg_write_source_op;
+            DE_reg_write <= DE_reg_write;
+            DE_pc_src_op <= DE_pc_src_op;
+            DE_jalr_op <= DE_jalr_op;
+            DE_mem_write <= DE_mem_write;
+            DE_o_dmem_mask <= DE_o_dmem_mask;
+            DE_mem_read <= DE_mem_read;
+            DE_funct3 <= DE_funct3;
+            DE_alu_op <= DE_alu_op;
+            DE_alu_src_op <= DE_alu_src_op;
+            DE_i_sub <= DE_i_sub;
+            DE_i_unsigned <= DE_i_unsigned;
+            DE_i_arith <= DE_i_arith;
+            DE_alu_pc_op <= DE_alu_pc_op;
+            DE_lui_op <= DE_lui_op;
             DE_PC <= DE_PC;
-            DE_valid <= 1'b0;
+            DE_valid <= DE_valid;  // Hold the instruction in DE while stalled
         end else begin
             DE_reg_write_source_op <= reg_write_source_op;
             DE_reg_write <= reg_write;
@@ -413,12 +423,12 @@ module hart #(
             DE_branch_out <= 32'b0;
             DE_instr <= 32'b0;
         end else if (stall) begin
-            DE_rd <= 5'b0;
-            DE_rs1_data <= 32'b0;
-            DE_rs2_data <= 32'b0;
-            DE_immediate <= 32'b0;
-            DE_branch_out <= 32'b0;
-            DE_instr <= 32'b0;
+            DE_rd <= DE_rd;
+            DE_rs1_data <= DE_rs1_data;
+            DE_rs2_data <= DE_rs2_data;
+            DE_immediate <= DE_immediate;
+            DE_branch_out <= DE_branch_out;
+            DE_instr <= DE_instr;
         end else begin
             DE_rd <= rd;
             DE_rs1_data <= rs1_data;
@@ -472,7 +482,21 @@ module hart #(
             EM_PC <= 32'b0;
             EM_instr <= 32'b0;
             EM_valid <= 1'b0;
+        end else if (stall) begin
+            // Hold all values when stalled - entire pipeline freezes
+            EM_reg_write_source_op <= EM_reg_write_source_op;
+            EM_reg_write <= EM_reg_write;
+            EM_pc_src_op <= EM_pc_src_op;
+            EM_jalr_op <= EM_jalr_op;
+            EM_mem_write <= EM_mem_write;
+            EM_o_dmem_mask <= EM_o_dmem_mask;
+            EM_mem_read <= EM_mem_read;
+            EM_funct3 <= EM_funct3;
+            EM_PC <= EM_PC;
+            EM_instr <= EM_instr;
+            EM_valid <= EM_valid;
         end else begin
+            // Advance normally when not stalled
             EM_reg_write_source_op <= DE_reg_write_source_op;
             EM_reg_write <= DE_reg_write;
             EM_pc_src_op <= DE_pc_src_op;
@@ -500,7 +524,15 @@ module hart #(
             EM_rs2_data <= 32'b0;
             EM_ALUResult <= 32'b0;
             EM_branch_out <= 32'b0;
+        end else if (stall) begin
+            // Hold all values when stalled
+            EM_rd <= EM_rd;
+            EM_rs1_data <= EM_rs1_data;
+            EM_rs2_data <= EM_rs2_data;
+            EM_ALUResult <= EM_ALUResult;
+            EM_branch_out <= EM_branch_out;
         end else begin
+            // Advance normally
             EM_rd <= DE_rd;
             EM_rs1_data <= rs1_forwarded_data;
             EM_rs2_data <= rs2_forwarded_data;
@@ -545,7 +577,17 @@ module hart #(
             MW_PC <= 32'b0;
             MW_instr <= 32'b0;
             MW_valid <= 1'b0;
+        end else if (stall) begin
+            // Hold all values when stalled - entire pipeline freezes
+            MW_reg_write_source_op <= MW_reg_write_source_op;
+            MW_reg_write <= MW_reg_write;
+            MW_pc_src_op <= MW_pc_src_op;
+            MW_jalr_op <= MW_jalr_op;
+            MW_PC <= MW_PC;
+            MW_instr <= MW_instr;
+            MW_valid <= MW_valid;
         end else begin
+            // Advance normally when not stalled
             MW_reg_write_source_op <= EM_reg_write_source_op;
             MW_reg_write <= EM_reg_write;
             MW_pc_src_op <= EM_pc_src_op;
@@ -582,7 +624,22 @@ module hart #(
             MW_dmem_mask <= 4'b0;
             MW_dmem_wdata <= 32'b0;
             MW_dmem_rdata <= 32'b0;
+        end else if (stall) begin
+            // Hold all values when stalled
+            MW_rd <= MW_rd;
+            MW_rs1_data <= MW_rs1_data;
+            MW_rs2_data <= MW_rs2_data;
+            MW_ALUResult <= MW_ALUResult;
+            MW_branch_out <= MW_branch_out;
+            MW_LoadData <= MW_LoadData;
+            MW_dmem_addr <= MW_dmem_addr;
+            MW_dmem_ren <= MW_dmem_ren;
+            MW_dmem_wen <= MW_dmem_wen;
+            MW_dmem_mask <= MW_dmem_mask;
+            MW_dmem_wdata <= MW_dmem_wdata;
+            MW_dmem_rdata <= MW_dmem_rdata;
         end else begin
+            // Advance normally
             MW_rd <= EM_rd;
             MW_rs1_data <= EM_rs1_data;
             MW_rs2_data <= EM_rs2_data;
@@ -624,7 +681,6 @@ module hart #(
         .stall(stall),
         .DE_mem_read(DE_mem_read),
         .DE_reg_write(DE_reg_write),
-        .DE_mem_write(DE_mem_write),
         .EM_rd(EM_rd),
         .EM_mem_read(EM_mem_read),
         .opcode(opcode),
