@@ -318,9 +318,9 @@ module hart #(
             load_data_buffer <= 32'b0;
             dmem_rdata_buffer <= 32'b0;
         end else if (!dcache_busy) begin
-            // Buffer both the decoded load value and raw dmem word.
+            // Buffer both the decoded load value and the cache-visible read word.
             load_data_buffer <= load_data;
-            dmem_rdata_buffer <= i_dmem_rdata;
+            dmem_rdata_buffer <= dcache_load_data;
         end
     end
 
@@ -755,7 +755,7 @@ module hart #(
             MW_dmem_wen <= EM_valid ? EM_mem_write : 1'b0;
             MW_dmem_mask <= EM_valid ? dcache_req_mask : 4'b0;
             MW_dmem_wdata <= EM_valid ? dcache_req_wdata : 32'b0;
-            MW_dmem_rdata <= EM_valid ? (EM_mem_read ? (dcache_busy ? dmem_rdata_buffer : i_dmem_rdata) : 32'b0) : 32'b0;
+            MW_dmem_rdata <= EM_valid ? (EM_mem_read ? (dcache_busy ? dmem_rdata_buffer : dcache_load_data) : 32'b0) : 32'b0;
         end
     end
 
