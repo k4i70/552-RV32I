@@ -30,7 +30,9 @@ module hazardDetection(
     wire branch_hazard = (is_branch && (rs1_conflict_de || rs2_conflict_de || rs1_conflict_em_load || rs2_conflict_em_load));
     wire jalr_hazard = (is_jalr && (rs1_conflict_de || rs1_conflict_em_load));
 
-    // Stall for internal hazards, memory waits, or data dependencies
-    assign stall = load_use_hazard || branch_hazard || jalr_hazard || imem_wait || dmem_wait;
+    // Instruction-cache misses should only stall the front end so older
+    // instructions can drain from the pipe. Data-cache misses still stall
+    // globally because they block the MEM stage result.
+    assign stall = load_use_hazard || branch_hazard || jalr_hazard || dmem_wait;
 
 endmodule

@@ -291,12 +291,11 @@ module hart #(
     assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
     assign next_pc = branch_taken ? branch_target : (fetch_pc + 32'h4);
 
-    // Instruction memory request protocol for multi-cycle memory (Project 6)
-    // Issue request wheneververr memory is ready
-    assign icache_req_ren = !branch_taken;
-
-
-    wire fetch_stall = icache_busy;
+    // Instruction memory request protocol for the icache: send one request for
+    // the current fetch PC, then deassert ren while a miss or buffered
+    // response is outstanding.
+    assign icache_req_ren = !branch_taken && !stall && !imem_request_pending && !imem_resp_valid;
+    wire fetch_stall = stall || icache_busy;
 
     /** Instruction Fetch **/
     fetch i_fetch (
@@ -307,11 +306,32 @@ module hart #(
         .o_mem_raddr(fetch_pc)
     );
 
-    
+    // Track outstanding icache misses and buffer the returning instruction
+    // until the FD stage can accept it.
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            imem_request_pending <= 1'b0;
+            imem_resp_valid <= 1'b0;
+            imem_resp_inst <= 32'h00000013;
+            imem_resp_pc <= RESET_ADDR;
+        end else if (branch_taken) begin
+            imem_request_pending <= 1'b0;
+            imem_resp_valid <= 1'b0;
+        end else begin
+            if (imem_request_pending && !icache_busy) begin
+                imem_request_pending <= 1'b0;
+                imem_resp_valid <= 1'b1;
+                imem_resp_inst <= icache_res_rdata;
+                imem_resp_pc <= fetch_pc;
+            end else if (!imem_request_pending && icache_req_ren && icache_busy) begin
+                imem_request_pending <= 1'b1;
+            end
 
-
-    // Instruction memory request tracking
-    // Removed for cache
+            if (imem_resp_valid && !stall) begin
+                imem_resp_valid <= 1'b0;
+            end
+        end
+    end
     
     // Data memory request tracking
     // Removed for cache
@@ -344,7 +364,17 @@ module hart #(
             FD_i_instr <= FD_i_instr;
             FD_PC <= FD_PC;
             FD_valid <= FD_valid;
-        end else if (!icache_busy) begin
+        end else if (imem_resp_valid) begin
+            FD_i_instr <= imem_resp_inst;
+            FD_PC <= imem_resp_pc;
+            FD_valid <= 1'b1;
+        end else if (icache_busy) begin
+            // Let the instruction currently in FD advance once, then leave FD
+            // empty until the outstanding fetch completes.
+            FD_i_instr <= FD_i_instr;
+            FD_PC <= FD_PC;
+            FD_valid <= 1'b0;
+        end else if (icache_req_ren) begin
             FD_i_instr <= icache_res_rdata;
             FD_PC <= fetch_pc;
             FD_valid <= 1'b1;
