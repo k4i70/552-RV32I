@@ -294,7 +294,7 @@ module hart #(
     // Instruction memory request protocol for multi-cycle memory (Project 6)
     // Issue request wheneververr memory is ready
     assign icache_req_ren = !branch_taken;
-    wire fetch_stall = icache_busy;
+    wire fetch_stall = stall || icache_busy;
 
     /** Instruction Fetch **/
     fetch i_fetch (
