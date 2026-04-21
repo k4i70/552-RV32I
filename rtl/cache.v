@@ -125,14 +125,13 @@ module cache (
     reg [S-1:0] miss_set;
     reg [T-1:0] miss_tag;
     reg [3:0]   mem_req_offset;
+    reg [3:0]   words_requested;
     reg [3:0]   words_filled;   // Tracks which words have been filled (0-3)
     reg         miss_write;
     reg [31:0]  miss_write_data;
     reg [3:0]   miss_write_mask;
     reg [1:0]   miss_write_word_off;  // Which word was being written
     reg [31:0]  miss_full_write_word;
-    reg         read_inflight;
-
     reg         serviced_a_miss;
     reg [31:0]  serviced_data;
 
@@ -163,7 +162,7 @@ module cache (
     assign o_mem_addr = (state == MISS) ? mem_req_addr : write_req_addr;
 
     // Memory reads: issue one miss-fill read at a time when memory is ready.
-    assign o_mem_ren = (state == MISS) && (words_filled < 4) && !read_inflight && i_mem_ready;
+    assign o_mem_ren = (state == MISS) && (words_requested < 4) && i_mem_ready;
 
     // Memory writes: write hits (write-through) or write misses (after fetch)
     assign o_mem_wen = (hit && i_req_wen && i_mem_ready) ||
@@ -181,6 +180,7 @@ module cache (
     always @(posedge i_clk) begin
         if (i_rst) begin
             state <= READY;
+            words_requested <= 4'h0;
             words_filled <= 4'h0;
             mem_req_offset <= 4'h0;
             miss_set <= 5'h0;
@@ -190,7 +190,6 @@ module cache (
             miss_write_mask <= 4'h0;
             miss_write_word_off <= 2'h0;
             miss_full_write_word <= 32'h0;
-            read_inflight <= 1'b0;
             serviced_a_miss <= 1'b0;
             serviced_data <= 32'b0;
             
@@ -265,9 +264,9 @@ module cache (
                             miss_write_mask <= i_req_mask;
                             miss_write_word_off <= req_word_off;
                             miss_full_write_word <= 32'h0;
+                            words_requested <= 4'h0;
                             words_filled <= 4'h0;
                             mem_req_offset <= 4'h0;
-                            read_inflight <= 1'b0;
                             serviced_a_miss <= 1'b0;
                         end
                     end else begin
@@ -277,14 +276,14 @@ module cache (
                 
                 MISS: begin
                     // Fill cache line word by word (for both read and write misses)
+                    if (words_requested < 4 && i_mem_ready) begin
+                        words_requested <= words_requested + 1;
+                        mem_req_offset <= mem_req_offset + 4'h4;
+                    end
+
                     if (words_filled < 4) begin
-                        if (!read_inflight && i_mem_ready) begin
-                            // Request next word in the cache line.
-                            read_inflight <= 1'b1;
-                        end
                         // Fetch phase: get all 4 words from memory
                         if (i_mem_valid) begin
-                            read_inflight <= 1'b0;
                             // Word received from memory
                             if (victim_way == 1'b0) begin
                                 datas0[miss_set][words_filled] <= i_mem_rdata;
@@ -349,7 +348,6 @@ module cache (
                                 end
                             end else begin
                                 words_filled <= words_filled + 1;
-                                mem_req_offset <= mem_req_offset + 4'h4;
                             end
                         end
                     end
@@ -365,9 +363,9 @@ module cache (
                 default: begin
                     // Recover from any unexpected state encoding.
                     state <= READY;
+                    words_requested <= 4'h0;
                     words_filled <= 4'h0;
                     mem_req_offset <= 4'h0;
-                    read_inflight <= 1'b0;
                     serviced_a_miss <= 1'b0;
                 end
             endcase
