@@ -21,9 +21,11 @@ module hart #(
     input  wire [31:0] i_imem_rdata,
     // Multi-cycle memory signals
     input  wire        i_imem_ready,
+    input  wire        i_imem_busy,
     output wire        o_imem_ren,
     input  wire        i_imem_valid,
     input  wire        i_dmem_ready,
+    input  wire        i_dmem_busy,
     input  wire        i_dmem_valid,
     // Data memory accesses go through a separate read/write data memory (dmem)
     // that is shared between read (load) and write (stored). The port accepts
