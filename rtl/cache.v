@@ -308,6 +308,15 @@ module cache (
                         end
                     end
                 end
+
+                default: begin
+                    // Recover from any unexpected state encoding.
+                    state <= READY;
+                    words_filled <= 4'h0;
+                    mem_req_offset <= 4'h0;
+                    read_inflight <= 1'b0;
+                    serviced_a_miss <= 1'b0;
+                end
             endcase
         end
     end
