@@ -185,19 +185,40 @@ module hart #(
     reg EM_valid;
     reg MW_valid;
 
+    reg MW_retired;
+
+    wire retire_fire;
+
     // Memory request tracking
     reg imem_request_pending;
     reg dmem_request_pending;
-    
+
     // Capture the address of the instruction being requested for multi-cycle latency
     reg [31:0] imem_requested_addr;
+
+    // Buffer one returned instruction until the FD stage can get it
+    reg        imem_resp_valid;
+    reg [31:0] imem_resp_inst;
+    reg [31:0] imem_resp_pc;
+    wire dmem_ren_raw;
+    wire dmem_wen_raw;
+    wire dmem_ren_int;
+    wire dmem_wen_int;
     
-    // Memory wait signals
-    wire imem_wait = imem_request_pending && !i_imem_valid;
-    wire dmem_wait = dmem_request_pending && !i_dmem_valid;
+    wire imem_need_req = !imem_request_pending && !imem_resp_valid;
+    wire imem_wait = (imem_need_req && !i_imem_ready) || (imem_request_pending && !i_imem_valid);
+
+    assign dmem_ren_int = dmem_ren_raw && EM_valid;
+    assign dmem_wen_int = dmem_wen_raw && EM_valid;
+
+    wire dmem_need_req = (dmem_ren_int || dmem_wen_int) && !dmem_request_pending;
+    // For loads, stall from request issue until response valid.
+    wire dmem_read_inflight = dmem_request_pending || o_dmem_ren;
+    wire dmem_wait = (dmem_need_req && !i_dmem_ready) || (dmem_read_inflight && !i_dmem_valid);
     
     // Load data buffer for multi-cycle latency
     reg [31:0] load_data_buffer;
+    reg [31:0] dmem_rdata_buffer;
 
     // IFID pipeline register
     reg [31:0] FD_i_instr;
@@ -210,16 +231,18 @@ module hart #(
     assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
     assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
 
-    // Instruction memory request protocol for multi-cycle memory
-    // Issue request whenever memory is ready (supports pipelined requests)
-    assign o_imem_ren = i_imem_ready;
+    // Instruction memory request protocol for multi-cycle memory (Project 6)
+    // Issue request wheneververr memory is ready
+    assign o_imem_ren = i_imem_ready && !imem_request_pending && !imem_resp_valid && !stall && !branch_taken;
 
+
+    wire fetch_stall = !(o_imem_ren || branch_taken);
 
     /** Instruction Fetch **/
     fetch i_fetch (
         .i_clk(i_clk),
         .i_rst(i_rst),
-        .i_stall(stall && !branch_taken),
+        .i_stall(fetch_stall),
         .address_in(next_pc), 
         .o_mem_raddr(o_imem_raddr)
     );
@@ -232,15 +255,30 @@ module hart #(
         if (i_rst) begin
             imem_request_pending <= 1'b0;
             imem_requested_addr <= 32'b0;
+            imem_resp_valid <= 1'b0;
+            imem_resp_inst <= 32'b0;
+            imem_resp_pc <= 32'b0;
         end
-        else if (o_imem_ren) begin
-            // We're issuing a new request this cycle - save the address
-            imem_request_pending <= 1'b1;
-            imem_requested_addr <= o_imem_raddr;
-        end
-        else if (i_imem_valid) begin
-            // Data has arrived, request is complete
-            imem_request_pending <= 1'b0;
+        else begin
+            if (o_imem_ren) begin
+                imem_request_pending <= 1'b1;
+                imem_requested_addr <= o_imem_raddr;
+            end
+
+            // Response handling if the pipeline can accept it this cycle, FD will use it
+            if (i_imem_valid) begin
+                imem_request_pending <= 1'b0;
+                if (stall || branch_taken) begin
+                    imem_resp_valid <= 1'b1;
+                    imem_resp_inst <= i_imem_rdata;
+                    imem_resp_pc <= imem_requested_addr;
+                end
+            end
+
+            // Use buffered response once FD has a chance to latch it.
+            if (imem_resp_valid && !stall && !branch_taken) begin
+                imem_resp_valid <= 1'b0;
+            end
         end
     end
 
@@ -249,20 +287,25 @@ module hart #(
         if (i_rst) begin
             dmem_request_pending <= 1'b0;
         end
-        else if ((o_dmem_ren || o_dmem_wen) && i_dmem_ready) begin
-            // We're issuing a new request this cycle
-            dmem_request_pending <= 1'b1;
-        end
-        else if (i_dmem_valid) begin
-            // Data has arrived (for reads) or write is complete
-            dmem_request_pending <= 1'b0;
+        else begin
+            if (i_dmem_valid) begin
+                dmem_request_pending <= 1'b0;
+            end else if (o_dmem_ren && !dmem_request_pending) begin
+                // Loads are multi-cycle and must wait for i_dmem_valid.
+                dmem_request_pending <= 1'b1;
+            end
         end
     end
 
     // Load data buffering for multi-cycle memory latency
     always @(posedge i_clk) begin
-        if (i_dmem_valid) begin
-            load_data_buffer <= i_dmem_rdata;
+        if (i_rst) begin
+            load_data_buffer <= 32'b0;
+            dmem_rdata_buffer <= 32'b0;
+        end else if (i_dmem_valid) begin
+            // Buffer both the decoded load value and raw dmem word.
+            load_data_buffer <= load_data;
+            dmem_rdata_buffer <= i_dmem_rdata;
         end
     end
 
@@ -273,20 +316,25 @@ module hart #(
             FD_PC <= RESET_ADDR;
             FD_valid <= 1'b0;
         end else if (branch_taken) begin
+
             FD_i_instr <= 32'h00000013;
             FD_PC <= 32'b0;
             FD_valid <= 1'b0;
-        end else if (!stall && i_imem_valid) begin
-            FD_i_instr <= i_imem_rdata;
-            FD_PC <= imem_requested_addr;  // Use the address that was originally requested
-            FD_valid <= 1'b1;
         end else if (stall) begin
             // Keep instruction while stalled
             FD_i_instr <= FD_i_instr;
             FD_PC <= FD_PC;
             FD_valid <= FD_valid;
+        end else if (i_imem_valid) begin
+            FD_i_instr <= i_imem_rdata;
+            FD_PC <= imem_requested_addr;
+            FD_valid <= 1'b1;
+        end else if (imem_resp_valid) begin
+            FD_i_instr <= imem_resp_inst;
+            FD_PC <= imem_resp_pc;
+            FD_valid <= 1'b1;
         end else begin
-            // Instruction advanced to next stage, FD is now empty
+            FD_i_instr <= 32'h00000013;
             FD_valid <= 1'b0;
         end
     end
@@ -314,7 +362,7 @@ module hart #(
         .i_arith(i_arith),
         .o_rs1_rdata(rs1_data),
         .o_rs2_rdata(rs2_data),
-        .reg_write_wb(MW_reg_write),
+        .reg_write_wb(MW_reg_write && MW_valid),
         .i_rd_waddr(MW_rd),
         .i_rd_wdata(WriteData),
         .jalr_op(jalr_op),
@@ -387,22 +435,22 @@ module hart #(
             DE_PC <= DE_PC;
             DE_valid <= DE_valid;  // Hold the instruction in DE while stalled
         end else begin
-            DE_reg_write_source_op <= reg_write_source_op;
-            DE_reg_write <= reg_write;
-            DE_pc_src_op <= pc_src_op;
-            DE_jalr_op <= jalr_op;
-            DE_mem_write <= mem_write;
-            DE_o_dmem_mask <= dmem_mask_base;
-            DE_mem_read <= mem_read;
-            DE_funct3 <= funct3;
-            DE_alu_op <= alu_op;
-            DE_alu_src_op <= alu_src_op;
-            DE_i_sub <= i_sub;
-            DE_i_unsigned <= i_unsigned;
-            DE_i_arith <= i_arith;
-            DE_alu_pc_op <= alu_pc_op;
-            DE_lui_op <= lui_op;
-            DE_PC <= FD_PC;
+            DE_reg_write_source_op <= FD_valid ? reg_write_source_op : 2'b0;
+            DE_reg_write <= FD_valid ? reg_write : 1'b0;
+            DE_pc_src_op <= FD_valid ? pc_src_op : 1'b0;
+            DE_jalr_op <= FD_valid ? jalr_op : 1'b0;
+            DE_mem_write <= FD_valid ? mem_write : 1'b0;
+            DE_o_dmem_mask <= FD_valid ? dmem_mask_base : 4'b0;
+            DE_mem_read <= FD_valid ? mem_read : 1'b0;
+            DE_funct3 <= FD_valid ? funct3 : 3'b0;
+            DE_alu_op <= FD_valid ? alu_op : 3'b0;
+            DE_alu_src_op <= FD_valid ? alu_src_op : 1'b0;
+            DE_i_sub <= FD_valid ? i_sub : 1'b0;
+            DE_i_unsigned <= FD_valid ? i_unsigned : 1'b0;
+            DE_i_arith <= FD_valid ? i_arith : 1'b0;
+            DE_alu_pc_op <= FD_valid ? alu_pc_op : 1'b0;
+            DE_lui_op <= FD_valid ? lui_op : 1'b0;
+            DE_PC <= FD_valid ? FD_PC : 32'b0;
             DE_valid <= FD_valid;
         end
     end
@@ -421,7 +469,7 @@ module hart #(
             DE_rs2_data <= 32'b0;
             DE_immediate <= 32'b0;
             DE_branch_out <= 32'b0;
-            DE_instr <= 32'b0;
+            DE_instr <= 32'h00000013;
         end else if (stall) begin
             DE_rd <= DE_rd;
             DE_rs1_data <= DE_rs1_data;
@@ -430,12 +478,12 @@ module hart #(
             DE_branch_out <= DE_branch_out;
             DE_instr <= DE_instr;
         end else begin
-            DE_rd <= rd;
-            DE_rs1_data <= rs1_data;
-            DE_rs2_data <= rs2_data;
-            DE_immediate <= immediate;
-            DE_branch_out <= branch_out;
-            DE_instr <= FD_i_instr;
+            DE_rd <= FD_valid ? rd : 5'd0;
+            DE_rs1_data <= FD_valid ? rs1_data : 32'b0;
+            DE_rs2_data <= FD_valid ? rs2_data : 32'b0;
+            DE_immediate <= FD_valid ? immediate : 32'b0;
+            DE_branch_out <= FD_valid ? branch_out : 32'b0;
+            DE_instr <= FD_valid ? FD_i_instr : 32'h00000013;
         end
     end
 
@@ -480,7 +528,7 @@ module hart #(
             EM_mem_read <= 1'b0;
             EM_funct3 <= 3'b0;
             EM_PC <= 32'b0;
-            EM_instr <= 32'b0;
+            EM_instr <= 32'h00000013;
             EM_valid <= 1'b0;
         end else if (stall) begin
             // Hold all values when stalled - entire pipeline freezes
@@ -497,16 +545,16 @@ module hart #(
             EM_valid <= EM_valid;
         end else begin
             // Advance normally when not stalled
-            EM_reg_write_source_op <= DE_reg_write_source_op;
-            EM_reg_write <= DE_reg_write;
-            EM_pc_src_op <= DE_pc_src_op;
-            EM_jalr_op <= DE_jalr_op;
-            EM_mem_write <= DE_mem_write;
-            EM_o_dmem_mask <= DE_o_dmem_mask;
-            EM_mem_read <= DE_mem_read;
-            EM_funct3 <= DE_funct3;
-            EM_PC <= DE_PC;
-            EM_instr <= DE_instr;
+            EM_reg_write_source_op <= DE_valid ? DE_reg_write_source_op : 2'b0;
+            EM_reg_write <= DE_valid ? DE_reg_write : 1'b0;
+            EM_pc_src_op <= DE_valid ? DE_pc_src_op : 1'b0;
+            EM_jalr_op <= DE_valid ? DE_jalr_op : 1'b0;
+            EM_mem_write <= DE_valid ? DE_mem_write : 1'b0;
+            EM_o_dmem_mask <= DE_valid ? DE_o_dmem_mask : 4'b0;
+            EM_mem_read <= DE_valid ? DE_mem_read : 1'b0;
+            EM_funct3 <= DE_valid ? DE_funct3 : 3'b0;
+            EM_PC <= DE_valid ? DE_PC : 32'b0;
+            EM_instr <= DE_valid ? DE_instr : 32'h00000013;
             EM_valid <= DE_valid;
         end
     end
@@ -533,11 +581,11 @@ module hart #(
             EM_branch_out <= EM_branch_out;
         end else begin
             // Advance normally
-            EM_rd <= DE_rd;
-            EM_rs1_data <= rs1_forwarded_data;
-            EM_rs2_data <= rs2_forwarded_data;
-            EM_ALUResult <= alu_result;
-            EM_branch_out <= DE_branch_out;
+            EM_rd <= DE_valid ? DE_rd : 5'd0;
+            EM_rs1_data <= DE_valid ? rs1_forwarded_data : 32'b0;
+            EM_rs2_data <= DE_valid ? rs2_forwarded_data : 32'b0;
+            EM_ALUResult <= DE_valid ? alu_result : 32'b0;
+            EM_branch_out <= DE_valid ? DE_branch_out : 32'b0;
         end
     end
     
@@ -548,11 +596,11 @@ module hart #(
         .mem_write(EM_mem_write),
         .alu_result(EM_ALUResult), 
         .rs2_data(EM_rs2_data),
-        .i_dmem_ready(i_dmem_ready),
+        .i_dmem_ready(1'b1),
         .o_dmem_addr(o_dmem_addr), 
         .o_dmem_wdata(o_dmem_wdata),
-        .o_dmem_ren(o_dmem_ren),
-        .o_dmem_wen(o_dmem_wen),
+        .o_dmem_ren(dmem_ren_raw),
+        .o_dmem_wen(dmem_wen_raw),
         .i_dmem_rdata(i_dmem_rdata),
         .o_dmem_mask(o_dmem_mask),
         .dmem_mask_base(EM_o_dmem_mask),
@@ -560,6 +608,11 @@ module hart #(
         .funct3(EM_funct3),
         .o_load_data(load_data)
     );
+
+    // Only assert when memory is ready
+
+    assign o_dmem_ren = dmem_ren_int && i_dmem_ready && !dmem_request_pending;
+    assign o_dmem_wen = dmem_wen_int && i_dmem_ready && !dmem_request_pending;
 
 
     // MW pipeline control signals
@@ -575,7 +628,7 @@ module hart #(
             MW_pc_src_op <= 1'b0;
             MW_jalr_op <= 1'b0;
             MW_PC <= 32'b0;
-            MW_instr <= 32'b0;
+            MW_instr <= 32'h00000013;
             MW_valid <= 1'b0;
         end else if (stall) begin
             // Hold all values when stalled - entire pipeline freezes
@@ -588,13 +641,32 @@ module hart #(
             MW_valid <= MW_valid;
         end else begin
             // Advance normally when not stalled
-            MW_reg_write_source_op <= EM_reg_write_source_op;
-            MW_reg_write <= EM_reg_write;
-            MW_pc_src_op <= EM_pc_src_op;
-            MW_jalr_op <= EM_jalr_op;
-            MW_PC <= EM_PC;
-            MW_instr <= EM_instr;
+            MW_reg_write_source_op <= EM_valid ? EM_reg_write_source_op : 2'b0;
+            MW_reg_write <= EM_valid ? EM_reg_write : 1'b0;
+            MW_pc_src_op <= EM_valid ? EM_pc_src_op : 1'b0;
+            MW_jalr_op <= EM_valid ? EM_jalr_op : 1'b0;
+            MW_PC <= EM_valid ? EM_PC : 32'b0;
+            MW_instr <= EM_valid ? EM_instr : 32'h00000013;
             MW_valid <= EM_valid;
+        end
+    end
+
+    assign retire_fire = MW_valid && !MW_retired;
+
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            MW_retired <= 1'b1;
+        end else if (!stall && EM_valid) begin
+            // A new valid instruction is loading into MW on this edge.
+            MW_retired <= 1'b0;
+        end else if (retire_fire) begin
+            // Current MW instruction has been reported as retired.
+            MW_retired <= 1'b1;
+        end else if (!stall && !EM_valid) begin
+            // MW becomes/holds a bubble
+            MW_retired <= 1'b1;
+        end else begin
+            MW_retired <= MW_retired;
         end
     end
 
@@ -640,19 +712,19 @@ module hart #(
             MW_dmem_rdata <= MW_dmem_rdata;
         end else begin
             // Advance normally
-            MW_rd <= EM_rd;
-            MW_rs1_data <= EM_rs1_data;
-            MW_rs2_data <= EM_rs2_data;
-            MW_ALUResult <= EM_ALUResult;
-            MW_branch_out <= EM_branch_out;
+            MW_rd <= EM_valid ? EM_rd : 5'd0;
+            MW_rs1_data <= EM_valid ? EM_rs1_data : 32'b0;
+            MW_rs2_data <= EM_valid ? EM_rs2_data : 32'b0;
+            MW_ALUResult <= EM_valid ? EM_ALUResult : 32'b0;
+            MW_branch_out <= EM_valid ? EM_branch_out : 32'b0;
             // Use buffered load data when available
-            MW_LoadData <= (i_dmem_valid || !dmem_request_pending) ? load_data : load_data_buffer;
-            MW_dmem_addr <= o_dmem_addr;
-            MW_dmem_ren <= o_dmem_ren;
-            MW_dmem_wen <= o_dmem_wen;
-            MW_dmem_mask <= o_dmem_mask;
-            MW_dmem_wdata <= o_dmem_wdata;
-            MW_dmem_rdata <= i_dmem_rdata;
+            MW_LoadData <= EM_valid ? (EM_mem_read ? (i_dmem_valid ? load_data : load_data_buffer) : load_data) : 32'b0;
+            MW_dmem_addr <= EM_valid ? o_dmem_addr : 32'b0;
+            MW_dmem_ren <= EM_valid ? EM_mem_read : 1'b0;
+            MW_dmem_wen <= EM_valid ? EM_mem_write : 1'b0;
+            MW_dmem_mask <= EM_valid ? o_dmem_mask : 4'b0;
+            MW_dmem_wdata <= EM_valid ? o_dmem_wdata : 32'b0;
+            MW_dmem_rdata <= EM_valid ? (EM_mem_read ? (i_dmem_valid ? i_dmem_rdata : dmem_rdata_buffer) : i_dmem_rdata) : 32'b0;
         end
     end
 
@@ -691,26 +763,24 @@ module hart #(
     // FORWARDING
     // DE Forwarding Unit
     DEForwardingUnit i_DEForwardingUnit (
-        .rs1_addr(DE_instr[19:15]),
-        .rs2_addr(DE_instr[24:20]),
+        .rs1_addr(FD_i_instr[19:15]),
+        .rs2_addr(FD_i_instr[24:20]),
         .ex_rd_addr(EM_rd),
         .ex_reg_write(EM_reg_write),
         .mem_rd_addr(MW_rd),
         .mem_reg_write(MW_reg_write),
-        .wb_rd_addr(MW_rd), 
-        .wb_reg_write(MW_reg_write),
+        .wb_rd_addr(5'd0), 
+        .wb_reg_write(1'b0),
         .forward_rs1_cnrl(forward_rs1_cnrl),
         .forward_rs2_cnrl(forward_rs2_cnrl)
     );
 
     // Branch forwarding muxes
     assign branch_rs1_data = (forward_rs1_cnrl == 2'b10) ? EM_ALUResult :
-                                  (forward_rs1_cnrl == 2'b01) ? MW_ALUResult :
-                                  (forward_rs1_cnrl == 2'b11) ? WriteData : rs1_data;
+                                  (forward_rs1_cnrl == 2'b01) ? WriteData : rs1_data;
 
     assign branch_rs2_data = (forward_rs2_cnrl == 2'b10) ? EM_ALUResult :
-                                  (forward_rs2_cnrl == 2'b01) ? MW_ALUResult :
-                                  (forward_rs2_cnrl == 2'b11) ? WriteData : rs2_data;
+                                  (forward_rs2_cnrl == 2'b01) ? WriteData : rs2_data;
 
     // EX-EX and EX-MEM forwarding unit
     forwardingUnit i_forwardingUnit (
@@ -730,7 +800,7 @@ module hart #(
 
 
     // Declare retire signals and connect with assigns
-    assign o_retire_valid = MW_valid;
+    assign o_retire_valid = retire_fire;
     assign o_retire_inst = MW_instr;
     assign o_retire_trap = 1'b0; 
     assign o_retire_halt = (MW_instr == 32'h00100073); // Ebreak instruction

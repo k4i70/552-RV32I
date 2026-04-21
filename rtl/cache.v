@@ -115,13 +115,6 @@ module cache (
     assign masked_read_data[15: 8] = i_req_mask[1] ? cache_read_data[15: 8] : 8'h00;
     assign masked_read_data[ 7: 0] = i_req_mask[0] ? cache_read_data[ 7: 0] : 8'h00;
     
-    // Write data mask: for writes during miss fill
-    wire [31:0] write_word;
-    assign write_word[31:24] = miss_write_mask[3] ? miss_write_data[31:24] : 8'h00;
-    assign write_word[23:16] = miss_write_mask[2] ? miss_write_data[23:16] : 8'h00;
-    assign write_word[15: 8] = miss_write_mask[1] ? miss_write_data[15: 8] : 8'h00;
-    assign write_word[ 7: 0] = miss_write_mask[0] ? miss_write_data[ 7: 0] : 8'h00;
-    
     // Miss handling state machine
     reg state;
     localparam READY = 1'b0;
@@ -135,6 +128,13 @@ module cache (
     reg [31:0]  miss_write_data;
     reg [3:0]   miss_write_mask;
     reg [1:0]   miss_write_word_off;  // Which word was being written
+
+    // Write data mask: for writes during miss fill
+    wire [31:0] write_word;
+    assign write_word[31:24] = miss_write_mask[3] ? miss_write_data[31:24] : 8'h00;
+    assign write_word[23:16] = miss_write_mask[2] ? miss_write_data[23:16] : 8'h00;
+    assign write_word[15: 8] = miss_write_mask[1] ? miss_write_data[15: 8] : 8'h00;
+    assign write_word[ 7: 0] = miss_write_mask[0] ? miss_write_data[ 7: 0] : 8'h00;
     
     // Determine replacement way on miss
     wire victim_way = lru[miss_set];  // 0 if way0 is LRU, 1 if way1 is LRU
@@ -143,27 +143,27 @@ module cache (
     // During miss handling, request words sequentially from memory
     wire [31:0] mem_req_addr = {miss_tag, miss_set, mem_req_offset};
     
-    // For write-through on hits, address is the request address; for misses, it's from mem_req
-    wire [31:0] write_req_addr = (hit && i_req_wen) ? i_req_addr : mem_req_addr;
-    wire [31:0] write_req_data = (hit && i_req_wen) ? i_req_wdata : write_word;
-    
+    // For write-through on hits, address is the request address
+    wire [31:0] write_req_addr = i_req_addr;
+    wire [31:0] write_req_data = i_req_wdata;
+
     assign o_busy = (state == MISS);
-    assign o_mem_addr = write_req_addr;
-    
+    assign o_mem_addr = (state == MISS) ? mem_req_addr : write_req_addr;
+
     // Memory reads: only for cache misses during fill
-    assign o_mem_ren = (state == MISS) && (words_filled < 4) && i_mem_ready;
-    
+    assign o_mem_ren = (state == MISS) && !miss_write && (words_filled < 4);
+
     // Memory writes: write hits (write-through) or write misses (after fetch)
-    assign o_mem_wen = ((hit && i_req_wen && i_mem_ready) ||
-                        ((state == MISS) && miss_write && (words_filled == 4) && i_mem_ready));
-    
+    assign o_mem_wen = (hit && i_req_wen) ||
+                        ((state == MISS) && miss_write && (words_filled == 4));
+
     // Write data: the word being written
-    assign o_mem_wdata = write_req_data;
-    
+    assign o_mem_wdata = (hit && i_req_wen) ? write_req_data : write_word;
+
     // Cache update on memory return
     // Output assignment
-    assign o_res_rdata = hit ? masked_read_data : 32'h00000000;
-    
+    assign o_res_rdata = hit ? masked_read_data : (state == READY && !hit && (i_req_ren || i_req_wen)) ? cache_read_data : 32'h0;
+
     // Sequential logic - state machine and cache updates
     integer way_idx;
     
