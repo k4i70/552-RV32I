@@ -145,7 +145,73 @@ module hart #(
 `endif
 );
 
-    // Fill in your implementation here.
+    // Fill in your implementation here
+
+
+    // Cache instances
+    wire icache_busy, dcache_busy;
+    wire [31:0] icache_mem_addr, dcache_mem_addr;
+    wire icache_mem_ren, dcache_mem_ren;
+    wire icache_mem_wen, dcache_mem_wen;
+    wire [31:0] icache_mem_wdata, dcache_mem_wdata;
+    wire [31:0] icache_res_rdata;
+    wire [31:0] fetch_pc;
+    wire icache_req_ren;
+    wire [31:0] dcache_req_addr;
+    wire [31:0] dcache_req_wdata;
+    wire [3:0] dcache_req_mask;
+    wire dmem_ren_raw;
+    wire dmem_wen_raw;
+    wire dmem_ren_int;
+    wire dmem_wen_int;
+    wire [31:0] dcache_load_data;
+
+    cache icache (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_mem_ready(i_imem_ready),
+        .o_mem_addr(icache_mem_addr),
+        .o_mem_ren(icache_mem_ren),
+        .o_mem_wen(icache_mem_wen),
+        .o_mem_wdata(icache_mem_wdata),
+        .i_mem_rdata(i_imem_rdata),
+        .i_mem_valid(i_imem_valid),
+        .o_busy(icache_busy),
+        .i_req_addr(fetch_pc),
+        .i_req_ren(icache_req_ren),
+        .i_req_wen(1'b0),
+        .i_req_mask(4'b1111),
+        .i_req_wdata(32'b0),
+        .o_res_rdata(icache_res_rdata)
+    );
+
+    cache dcache (
+        .i_clk(i_clk),
+        .i_rst(i_rst),
+        .i_mem_ready(i_dmem_ready),
+        .o_mem_addr(dcache_mem_addr),
+        .o_mem_ren(dcache_mem_ren),
+        .o_mem_wen(dcache_mem_wen),
+        .o_mem_wdata(dcache_mem_wdata),
+        .i_mem_rdata(i_dmem_rdata),
+        .i_mem_valid(i_dmem_valid),
+        .o_busy(dcache_busy),
+        .i_req_addr(dcache_req_addr),
+        .i_req_ren(dmem_ren_int),
+        .i_req_wen(dmem_wen_int),
+        .i_req_mask(dcache_req_mask),
+        .i_req_wdata(dcache_req_wdata),
+        .o_res_rdata(dcache_load_data)
+    );
+
+    // Caches connect directly to separate instruction/data memory ports.
+    assign o_imem_raddr = icache_mem_addr;
+    assign o_imem_ren = icache_mem_ren;
+    assign o_dmem_addr = dcache_mem_addr;
+    assign o_dmem_ren = dcache_mem_ren;
+    assign o_dmem_wen = dcache_mem_wen;
+    assign o_dmem_wdata = dcache_mem_wdata;
+    assign o_dmem_mask = 4'b1111; // Caches handle masking
 
     // Intermediate signals
     wire [6:0] opcode;
@@ -202,21 +268,13 @@ module hart #(
     reg        imem_resp_valid;
     reg [31:0] imem_resp_inst;
     reg [31:0] imem_resp_pc;
-    wire dmem_ren_raw;
-    wire dmem_wen_raw;
-    wire dmem_ren_int;
-    wire dmem_wen_int;
     
-    wire imem_need_req = !imem_request_pending && !imem_resp_valid;
-    wire imem_wait = (imem_need_req && !i_imem_ready) || (imem_request_pending && !i_imem_valid);
+    wire imem_wait = icache_busy;
 
     assign dmem_ren_int = dmem_ren_raw && EM_valid;
     assign dmem_wen_int = dmem_wen_raw && EM_valid;
 
-    wire dmem_need_req = (dmem_ren_int || dmem_wen_int) && !dmem_request_pending;
-    // For loads, stall from request issue until response valid.
-    wire dmem_read_inflight = dmem_request_pending || o_dmem_ren;
-    wire dmem_wait = (dmem_need_req && !i_dmem_ready) || (dmem_read_inflight && !i_dmem_valid);
+    wire dmem_wait = dcache_busy;
     
     // Load data buffer for multi-cycle latency
     reg [31:0] load_data_buffer;
@@ -231,14 +289,14 @@ module hart #(
     wire [31:0] branch_target;
     assign branch_taken = FD_valid && !stall && (jalr_op || (branch_out != 32'h4));
     assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
-    assign next_pc = branch_taken ? branch_target : (o_imem_raddr + 32'h4);
+    assign next_pc = branch_taken ? branch_target : (fetch_pc + 32'h4);
 
     // Instruction memory request protocol for multi-cycle memory (Project 6)
     // Issue request wheneververr memory is ready
-    assign o_imem_ren = i_imem_ready && !imem_request_pending && !imem_resp_valid && !stall && !branch_taken;
+    assign icache_req_ren = !branch_taken;
 
 
-    wire fetch_stall = !(o_imem_ren || branch_taken);
+    wire fetch_stall = icache_busy;
 
     /** Instruction Fetch **/
     fetch i_fetch (
@@ -246,65 +304,24 @@ module hart #(
         .i_rst(i_rst),
         .i_stall(fetch_stall),
         .address_in(next_pc), 
-        .o_mem_raddr(o_imem_raddr)
+        .o_mem_raddr(fetch_pc)
     );
 
     
 
 
     // Instruction memory request tracking
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            imem_request_pending <= 1'b0;
-            imem_requested_addr <= 32'b0;
-            imem_resp_valid <= 1'b0;
-            imem_resp_inst <= 32'b0;
-            imem_resp_pc <= 32'b0;
-        end
-        else begin
-            if (o_imem_ren) begin
-                imem_request_pending <= 1'b1;
-                imem_requested_addr <= o_imem_raddr;
-            end
-
-            // Response handling if the pipeline can accept it this cycle, FD will use it
-            if (i_imem_valid) begin
-                imem_request_pending <= 1'b0;
-                if (stall || branch_taken) begin
-                    imem_resp_valid <= 1'b1;
-                    imem_resp_inst <= i_imem_rdata;
-                    imem_resp_pc <= imem_requested_addr;
-                end
-            end
-
-            // Use buffered response once FD has a chance to latch it.
-            if (imem_resp_valid && !stall && !branch_taken) begin
-                imem_resp_valid <= 1'b0;
-            end
-        end
-    end
-
+    // Removed for cache
+    
     // Data memory request tracking
-    always @(posedge i_clk) begin
-        if (i_rst) begin
-            dmem_request_pending <= 1'b0;
-        end
-        else begin
-            if (i_dmem_valid) begin
-                dmem_request_pending <= 1'b0;
-            end else if (o_dmem_ren && !dmem_request_pending) begin
-                // Loads are multi-cycle and must wait for i_dmem_valid.
-                dmem_request_pending <= 1'b1;
-            end
-        end
-    end
+    // Removed for cache
 
     // Load data buffering for multi-cycle memory latency
     always @(posedge i_clk) begin
         if (i_rst) begin
             load_data_buffer <= 32'b0;
             dmem_rdata_buffer <= 32'b0;
-        end else if (i_dmem_valid) begin
+        end else if (!dcache_busy) begin
             // Buffer both the decoded load value and raw dmem word.
             load_data_buffer <= load_data;
             dmem_rdata_buffer <= i_dmem_rdata;
@@ -327,13 +344,9 @@ module hart #(
             FD_i_instr <= FD_i_instr;
             FD_PC <= FD_PC;
             FD_valid <= FD_valid;
-        end else if (i_imem_valid) begin
-            FD_i_instr <= i_imem_rdata;
-            FD_PC <= imem_requested_addr;
-            FD_valid <= 1'b1;
-        end else if (imem_resp_valid) begin
-            FD_i_instr <= imem_resp_inst;
-            FD_PC <= imem_resp_pc;
+        end else if (!icache_busy) begin
+            FD_i_instr <= icache_res_rdata;
+            FD_PC <= fetch_pc;
             FD_valid <= 1'b1;
         end else begin
             FD_i_instr <= 32'h00000013;
@@ -598,23 +611,18 @@ module hart #(
         .mem_write(EM_mem_write),
         .alu_result(EM_ALUResult), 
         .rs2_data(EM_rs2_data),
-        .i_dmem_ready(1'b1),
-        .o_dmem_addr(o_dmem_addr), 
-        .o_dmem_wdata(o_dmem_wdata),
+        .o_dmem_addr(dcache_req_addr), 
+        .o_dmem_wdata(dcache_req_wdata),
         .o_dmem_ren(dmem_ren_raw),
         .o_dmem_wen(dmem_wen_raw),
-        .i_dmem_rdata(i_dmem_rdata),
-        .o_dmem_mask(o_dmem_mask),
+        .i_dmem_rdata(dcache_load_data),
+        .o_dmem_mask(dcache_req_mask),
         .dmem_mask_base(EM_o_dmem_mask),
+        .i_dmem_ready(1'b1),
         .mem_read(EM_mem_read),
         .funct3(EM_funct3),
         .o_load_data(load_data)
     );
-
-    // Only assert when memory is ready
-
-    assign o_dmem_ren = dmem_ren_int && i_dmem_ready && !dmem_request_pending;
-    assign o_dmem_wen = dmem_wen_int && i_dmem_ready && !dmem_request_pending;
 
 
     // MW pipeline control signals
@@ -720,13 +728,13 @@ module hart #(
             MW_ALUResult <= EM_valid ? EM_ALUResult : 32'b0;
             MW_branch_out <= EM_valid ? EM_branch_out : 32'b0;
             // Use buffered load data when available
-            MW_LoadData <= EM_valid ? (EM_mem_read ? (i_dmem_valid ? load_data : load_data_buffer) : load_data) : 32'b0;
-            MW_dmem_addr <= EM_valid ? o_dmem_addr : 32'b0;
+            MW_LoadData <= EM_valid ? (EM_mem_read ? (dcache_busy ? load_data_buffer : load_data) : 32'b0) : 32'b0;
+            MW_dmem_addr <= EM_valid ? dcache_req_addr : 32'b0;
             MW_dmem_ren <= EM_valid ? EM_mem_read : 1'b0;
             MW_dmem_wen <= EM_valid ? EM_mem_write : 1'b0;
-            MW_dmem_mask <= EM_valid ? o_dmem_mask : 4'b0;
-            MW_dmem_wdata <= EM_valid ? o_dmem_wdata : 32'b0;
-            MW_dmem_rdata <= EM_valid ? (EM_mem_read ? (i_dmem_valid ? i_dmem_rdata : dmem_rdata_buffer) : i_dmem_rdata) : 32'b0;
+            MW_dmem_mask <= EM_valid ? dcache_req_mask : 4'b0;
+            MW_dmem_wdata <= EM_valid ? dcache_req_wdata : 32'b0;
+            MW_dmem_rdata <= EM_valid ? (EM_mem_read ? (dcache_busy ? dmem_rdata_buffer : i_dmem_rdata) : 32'b0) : 32'b0;
         end
     end
 

@@ -103,6 +103,8 @@ module cache (
     wire hit = way0_match || way1_match;
     wire hit_way = way1_match;  // 0 if way0 hits, 1 if way1 hits
     
+    wire miss = (i_req_ren || i_req_wen) && !hit;
+
     // Read path
     wire [31:0] way0_data = datas0[req_set][req_word_off];
     wire [31:0] way1_data = datas1[req_set][req_word_off];
@@ -128,6 +130,10 @@ module cache (
     reg [31:0]  miss_write_data;
     reg [3:0]   miss_write_mask;
     reg [1:0]   miss_write_word_off;  // Which word was being written
+    reg         read_inflight;
+
+    reg         serviced_a_miss;
+    reg [31:0]  serviced_data;
 
     // Write data mask: for writes during miss fill
     wire [31:0] write_word;
@@ -146,23 +152,24 @@ module cache (
     // For write-through on hits, address is the request address
     wire [31:0] write_req_addr = i_req_addr;
     wire [31:0] write_req_data = i_req_wdata;
+    wire write_hit_wait = (state == READY) && hit && i_req_wen && !i_mem_ready;
 
-    assign o_busy = (state == MISS);
+    assign o_busy = (state == MISS) || miss || write_hit_wait;
     assign o_mem_addr = (state == MISS) ? mem_req_addr : write_req_addr;
 
-    // Memory reads: only for cache misses during fill
-    assign o_mem_ren = (state == MISS) && !miss_write && (words_filled < 4);
+    // Memory reads: issue one miss-fill read at a time when memory is ready.
+    assign o_mem_ren = (state == MISS) && (words_filled < 4) && !read_inflight && i_mem_ready;
 
     // Memory writes: write hits (write-through) or write misses (after fetch)
-    assign o_mem_wen = (hit && i_req_wen) ||
-                        ((state == MISS) && miss_write && (words_filled == 4));
+    assign o_mem_wen = (hit && i_req_wen && i_mem_ready) ||
+                        ((state == MISS) && miss_write && (words_filled == 4) && i_mem_ready);
 
     // Write data: the word being written
     assign o_mem_wdata = (hit && i_req_wen) ? write_req_data : write_word;
 
     // Cache update on memory return
     // Output assignment
-    assign o_res_rdata = hit ? masked_read_data : (state == READY && !hit && (i_req_ren || i_req_wen)) ? cache_read_data : 32'h0;
+    assign o_res_rdata = hit ? masked_read_data : (serviced_a_miss ? serviced_data : 32'h0);
 
     // Sequential logic - state machine and cache updates
     integer way_idx;
@@ -178,6 +185,9 @@ module cache (
             miss_write_data <= 32'h0;
             miss_write_mask <= 4'h0;
             miss_write_word_off <= 2'h0;
+            read_inflight <= 1'b0;
+            serviced_a_miss <= 1'b0;
+            serviced_data <= 32'b0;
             
             // Initialize cache as empty
             for (way_idx = 0; way_idx < DEPTH; way_idx = way_idx + 1) begin
@@ -210,6 +220,7 @@ module cache (
                             
                             // Update LRU: accessed way is now MRU
                             lru[req_set] <= !hit_way;
+                            serviced_a_miss <= 1'b0;
                         end
                         else begin
                             // Cache miss: need to fetch the line
@@ -222,15 +233,24 @@ module cache (
                             miss_write_word_off <= req_word_off;
                             words_filled <= 4'h0;
                             mem_req_offset <= 4'h0;
+                            read_inflight <= 1'b0;
+                            serviced_a_miss <= 1'b0;
                         end
+                    end else begin
+                        serviced_a_miss <= 1'b0;
                     end
                 end
                 
                 MISS: begin
                     // Fill cache line word by word (for both read and write misses)
                     if (words_filled < 4) begin
+                        if (!read_inflight && i_mem_ready) begin
+                            // Request next word in the cache line.
+                            read_inflight <= 1'b1;
+                        end
                         // Fetch phase: get all 4 words from memory
                         if (i_mem_valid) begin
+                            read_inflight <= 1'b0;
                             // Word received from memory
                             if (victim_way == 1'b0) begin
                                 datas0[miss_set][words_filled] <= i_mem_rdata;
@@ -250,6 +270,7 @@ module cache (
                                         if (miss_write_mask[1]) datas0[miss_set][miss_write_word_off][15: 8] <= miss_write_data[15: 8];
                                         if (miss_write_mask[0]) datas0[miss_set][miss_write_word_off][ 7: 0] <= miss_write_data[ 7: 0];
                                     end
+                                    serviced_data <= datas0[miss_set][req_word_off];
                                 end else begin
                                     tags1[miss_set] <= miss_tag;
                                     valid[miss_set][1] <= 1'b1;
@@ -260,8 +281,10 @@ module cache (
                                         if (miss_write_mask[1]) datas1[miss_set][miss_write_word_off][15: 8] <= miss_write_data[15: 8];
                                         if (miss_write_mask[0]) datas1[miss_set][miss_write_word_off][ 7: 0] <= miss_write_data[ 7: 0];
                                     end
+                                    serviced_data <= datas1[miss_set][req_word_off];
                                 end
                                 lru[miss_set] <= !victim_way;
+                                serviced_a_miss <= 1'b1;
                                 
                                 if (miss_write) begin
                                     // write the word to memory
@@ -279,7 +302,7 @@ module cache (
                     end
                     else if (miss_write) begin
                         // Write phase: send the modified word to memory
-                        if (i_mem_valid) begin
+                        if (i_mem_ready) begin
                             // Write complete
                             state <= READY;
                         end
