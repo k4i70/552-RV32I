@@ -74,10 +74,10 @@ module cache (
     // 32 sets * 2 ways per set * 16 bytes per way = 1K cache
     localparam O = 4;            // 4 bit offset => 16 byte cache line
     localparam S = 5;            // 5 bit set index => 32 sets
-    localparam DEPTH = 2 ** S;   // 32 sets
+    localparam DEPTH = 32;   // 32 sets
     localparam W = 2;            // 2 way set associative, NMRU
-    localparam T = 32 - O - S;   // 23 bit tag
-    localparam D = 2 ** O / 4;   // 16 bytes per line / 4 bytes per word = 4 words per line
+    localparam T = 23;   // 23 bit tag
+    localparam D = 4;   // 16 bytes per line / 4 bytes per word = 4 words per line
 
     // The following memory arrays model the cache structure. As this is
     // an internal implementation detail, you are *free* to modify these
@@ -172,7 +172,6 @@ module cache (
     assign o_res_rdata = hit ? masked_read_data : (serviced_a_miss ? serviced_data : 32'h0);
 
     // Sequential logic - state machine and cache updates
-    integer way_idx;
     
     always @(posedge i_clk) begin
         if (i_rst) begin
@@ -190,10 +189,38 @@ module cache (
             serviced_data <= 32'b0;
             
             // Initialize cache as empty
-            for (way_idx = 0; way_idx < DEPTH; way_idx = way_idx + 1) begin
-                valid[way_idx] <= 2'b00;
-                lru[way_idx] <= 1'b0;
-            end
+            valid[ 0] <= 2'b00; lru[ 0] <= 1'b0;
+            valid[ 1] <= 2'b00; lru[ 1] <= 1'b0;
+            valid[ 2] <= 2'b00; lru[ 2] <= 1'b0;
+            valid[ 3] <= 2'b00; lru[ 3] <= 1'b0;
+            valid[ 4] <= 2'b00; lru[ 4] <= 1'b0;
+            valid[ 5] <= 2'b00; lru[ 5] <= 1'b0;
+            valid[ 6] <= 2'b00; lru[ 6] <= 1'b0;
+            valid[ 7] <= 2'b00; lru[ 7] <= 1'b0;
+            valid[ 8] <= 2'b00; lru[ 8] <= 1'b0;
+            valid[ 9] <= 2'b00; lru[ 9] <= 1'b0;
+            valid[10] <= 2'b00; lru[10] <= 1'b0;
+            valid[11] <= 2'b00; lru[11] <= 1'b0;
+            valid[12] <= 2'b00; lru[12] <= 1'b0;
+            valid[13] <= 2'b00; lru[13] <= 1'b0;
+            valid[14] <= 2'b00; lru[14] <= 1'b0;
+            valid[15] <= 2'b00; lru[15] <= 1'b0;
+            valid[16] <= 2'b00; lru[16] <= 1'b0;
+            valid[17] <= 2'b00; lru[17] <= 1'b0;
+            valid[18] <= 2'b00; lru[18] <= 1'b0;
+            valid[19] <= 2'b00; lru[19] <= 1'b0;
+            valid[20] <= 2'b00; lru[20] <= 1'b0;
+            valid[21] <= 2'b00; lru[21] <= 1'b0;
+            valid[22] <= 2'b00; lru[22] <= 1'b0;
+            valid[23] <= 2'b00; lru[23] <= 1'b0;
+            valid[24] <= 2'b00; lru[24] <= 1'b0;
+            valid[25] <= 2'b00; lru[25] <= 1'b0;
+            valid[26] <= 2'b00; lru[26] <= 1'b0;
+            valid[27] <= 2'b00; lru[27] <= 1'b0;
+            valid[28] <= 2'b00; lru[28] <= 1'b0;
+            valid[29] <= 2'b00; lru[29] <= 1'b0;
+            valid[30] <= 2'b00; lru[30] <= 1'b0;
+            valid[31] <= 2'b00; lru[31] <= 1'b0;
         end
         else begin
             case (state)
