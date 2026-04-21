@@ -152,9 +152,7 @@ module cache (
     // For write-through on hits, address is the request address
     wire [31:0] write_req_addr = i_req_addr;
     wire [31:0] write_req_data = i_req_wdata;
-    wire write_hit_wait = (state == READY) && hit && i_req_wen && !i_mem_ready;
-
-    assign o_busy = (state == MISS) || miss || write_hit_wait;
+    assign o_busy = (state == MISS) || miss;
     assign o_mem_addr = (state == MISS) ? mem_req_addr : write_req_addr;
 
     // Memory reads: issue one miss-fill read at a time when memory is ready.
