@@ -9,7 +9,8 @@ module hazardDetection(
 	input wire [6:0] opcode,
 	input wire imem_wait,
 	input wire dmem_wait,
-	output wire stall
+	output wire stall,
+	output wire pipeline_freeze
 );
 
     wire is_branch = (opcode == 7'b1100011);
@@ -30,7 +31,9 @@ module hazardDetection(
     wire branch_hazard = (is_branch && (rs1_conflict_de || rs2_conflict_de || rs1_conflict_em_load || rs2_conflict_em_load));
     wire jalr_hazard = (is_jalr && (rs1_conflict_de || rs1_conflict_em_load));
 
-    // Stall for internal hazards, memory waits, or data dependencies
-    assign stall = load_use_hazard || branch_hazard || jalr_hazard || imem_wait || dmem_wait;
+    assign pipeline_freeze = imem_wait || dmem_wait;
+
+    // Stall the front-end for either a true hazard or a memory wait.
+    assign stall = load_use_hazard || branch_hazard || jalr_hazard || pipeline_freeze;
 
 endmodule

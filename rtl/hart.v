@@ -237,6 +237,7 @@ module hart #(
     wire [4:0] i_rs1_raddr;
     wire [4:0] i_rs2_raddr;
     wire stall;
+    wire pipeline_freeze;
     reg [4:0] MW_rd;
     reg MW_reg_write;
     wire [31:0] rs1_forwarded_data;
@@ -294,7 +295,7 @@ module hart #(
     // Instruction memory request protocol for multi-cycle memory (Project 6)
     // Issue request wheneververr memory is ready
     assign icache_req_ren = !branch_taken;
-    wire fetch_stall = stall || icache_busy;
+    wire fetch_stall = stall;
 
     /** Instruction Fetch **/
     fetch i_fetch (
@@ -426,7 +427,7 @@ module hart #(
             DE_lui_op <= 1'b0;
             DE_PC <= 32'b0;
             DE_valid <= 1'b0;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             DE_reg_write_source_op <= DE_reg_write_source_op;
             DE_reg_write <= DE_reg_write;
             DE_pc_src_op <= DE_pc_src_op;
@@ -444,6 +445,24 @@ module hart #(
             DE_lui_op <= DE_lui_op;
             DE_PC <= DE_PC;
             DE_valid <= DE_valid;  // Hold the instruction in DE while stalled
+        end else if (stall) begin
+            DE_reg_write_source_op <= 2'b0;
+            DE_reg_write <= 1'b0;
+            DE_pc_src_op <= 1'b0;
+            DE_jalr_op <= 1'b0;
+            DE_mem_write <= 1'b0;
+            DE_o_dmem_mask <= 4'b0;
+            DE_mem_read <= 1'b0;
+            DE_funct3 <= 3'b0;
+            DE_alu_op <= 3'b0;
+            DE_alu_src_op <= 1'b0;
+            DE_i_sub <= 1'b0;
+            DE_i_unsigned <= 1'b0;
+            DE_i_arith <= 1'b0;
+            DE_alu_pc_op <= 1'b0;
+            DE_lui_op <= 1'b0;
+            DE_PC <= 32'b0;
+            DE_valid <= 1'b0;
         end else begin
             DE_reg_write_source_op <= FD_valid ? reg_write_source_op : 2'b0;
             DE_reg_write <= FD_valid ? reg_write : 1'b0;
@@ -480,13 +499,20 @@ module hart #(
             DE_immediate <= 32'b0;
             DE_branch_out <= 32'b0;
             DE_instr <= 32'h00000013;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             DE_rd <= DE_rd;
             DE_rs1_data <= DE_rs1_data;
             DE_rs2_data <= DE_rs2_data;
             DE_immediate <= DE_immediate;
             DE_branch_out <= DE_branch_out;
             DE_instr <= DE_instr;
+        end else if (stall) begin
+            DE_rd <= 5'd0;
+            DE_rs1_data <= 32'b0;
+            DE_rs2_data <= 32'b0;
+            DE_immediate <= 32'b0;
+            DE_branch_out <= 32'b0;
+            DE_instr <= 32'h00000013;
         end else begin
             DE_rd <= FD_valid ? rd : 5'd0;
             DE_rs1_data <= FD_valid ? rs1_data : 32'b0;
@@ -540,7 +566,7 @@ module hart #(
             EM_PC <= 32'b0;
             EM_instr <= 32'h00000013;
             EM_valid <= 1'b0;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             // Hold all values when stalled - entire pipeline freezes
             EM_reg_write_source_op <= EM_reg_write_source_op;
             EM_reg_write <= EM_reg_write;
@@ -582,7 +608,7 @@ module hart #(
             EM_rs2_data <= 32'b0;
             EM_ALUResult <= 32'b0;
             EM_branch_out <= 32'b0;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             // Hold all values when stalled
             EM_rd <= EM_rd;
             EM_rs1_data <= EM_rs1_data;
@@ -635,7 +661,7 @@ module hart #(
             MW_PC <= 32'b0;
             MW_instr <= 32'h00000013;
             MW_valid <= 1'b0;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             // Hold all values when stalled - entire pipeline freezes
             MW_reg_write_source_op <= MW_reg_write_source_op;
             MW_reg_write <= MW_reg_write;
@@ -661,13 +687,13 @@ module hart #(
     always @(posedge i_clk) begin
         if (i_rst) begin
             MW_retired <= 1'b1;
-        end else if (!stall && EM_valid) begin
+        end else if (!pipeline_freeze && EM_valid) begin
             // A new valid instruction is loading into MW on this edge.
             MW_retired <= 1'b0;
         end else if (retire_fire) begin
             // Current MW instruction has been reported as retired.
             MW_retired <= 1'b1;
-        end else if (!stall && !EM_valid) begin
+        end else if (!pipeline_freeze && !EM_valid) begin
             // MW becomes/holds a bubble
             MW_retired <= 1'b1;
         end else begin
@@ -701,7 +727,7 @@ module hart #(
             MW_dmem_mask <= 4'b0;
             MW_dmem_wdata <= 32'b0;
             MW_dmem_rdata <= 32'b0;
-        end else if (stall) begin
+        end else if (pipeline_freeze) begin
             // Hold all values when stalled
             MW_rd <= MW_rd;
             MW_rs1_data <= MW_rs1_data;
@@ -762,7 +788,8 @@ module hart #(
         .EM_mem_read(EM_mem_read),
         .opcode(opcode),
         .imem_wait(imem_wait),
-        .dmem_wait(dmem_wait)
+        .dmem_wait(dmem_wait),
+        .pipeline_freeze(pipeline_freeze)
     );
 
     // FORWARDING

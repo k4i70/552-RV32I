@@ -130,6 +130,7 @@ module cache (
     reg [31:0]  miss_write_data;
     reg [3:0]   miss_write_mask;
     reg [1:0]   miss_write_word_off;  // Which word was being written
+    reg [31:0]  miss_full_write_word;
     reg         read_inflight;
 
     reg         serviced_a_miss;
@@ -141,6 +142,12 @@ module cache (
     assign write_word[23:16] = miss_write_mask[2] ? miss_write_data[23:16] : 8'h00;
     assign write_word[15: 8] = miss_write_mask[1] ? miss_write_data[15: 8] : 8'h00;
     assign write_word[ 7: 0] = miss_write_mask[0] ? miss_write_data[ 7: 0] : 8'h00;
+
+    wire [31:0] hit_write_word;
+    assign hit_write_word[31:24] = i_req_mask[3] ? i_req_wdata[31:24] : cache_read_data[31:24];
+    assign hit_write_word[23:16] = i_req_mask[2] ? i_req_wdata[23:16] : cache_read_data[23:16];
+    assign hit_write_word[15: 8] = i_req_mask[1] ? i_req_wdata[15: 8] : cache_read_data[15: 8];
+    assign hit_write_word[ 7: 0] = i_req_mask[0] ? i_req_wdata[ 7: 0] : cache_read_data[ 7: 0];
     
     // Determine replacement way on miss
     wire victim_way = lru[miss_set];  // 0 if way0 is LRU, 1 if way1 is LRU
@@ -163,7 +170,7 @@ module cache (
                         ((state == MISS) && miss_write && (words_filled == 4) && i_mem_ready);
 
     // Write data: the word being written
-    assign o_mem_wdata = (hit && i_req_wen) ? write_req_data : write_word;
+    assign o_mem_wdata = (hit && i_req_wen) ? hit_write_word : miss_full_write_word;
 
     // Cache update on memory return
     // Output assignment
@@ -182,6 +189,7 @@ module cache (
             miss_write_data <= 32'h0;
             miss_write_mask <= 4'h0;
             miss_write_word_off <= 2'h0;
+            miss_full_write_word <= 32'h0;
             read_inflight <= 1'b0;
             serviced_a_miss <= 1'b0;
             serviced_data <= 32'b0;
@@ -256,6 +264,7 @@ module cache (
                             miss_write_data <= i_req_wdata;
                             miss_write_mask <= i_req_mask;
                             miss_write_word_off <= req_word_off;
+                            miss_full_write_word <= 32'h0;
                             words_filled <= 4'h0;
                             mem_req_offset <= 4'h0;
                             read_inflight <= 1'b0;
@@ -307,6 +316,25 @@ module cache (
                                         if (miss_write_mask[0]) datas1[miss_set][miss_write_word_off][ 7: 0] <= miss_write_data[ 7: 0];
                                     end
                                     serviced_data <= datas1[miss_set][req_word_off];
+                                end
+
+                                if (miss_write) begin
+                                    miss_full_write_word[31:24] <= miss_write_mask[3] ? miss_write_data[31:24] :
+                                                                   ((miss_write_word_off == words_filled[1:0]) ? i_mem_rdata[31:24] :
+                                                                    (victim_way ? datas1[miss_set][miss_write_word_off][31:24] :
+                                                                                  datas0[miss_set][miss_write_word_off][31:24]));
+                                    miss_full_write_word[23:16] <= miss_write_mask[2] ? miss_write_data[23:16] :
+                                                                   ((miss_write_word_off == words_filled[1:0]) ? i_mem_rdata[23:16] :
+                                                                    (victim_way ? datas1[miss_set][miss_write_word_off][23:16] :
+                                                                                  datas0[miss_set][miss_write_word_off][23:16]));
+                                    miss_full_write_word[15: 8] <= miss_write_mask[1] ? miss_write_data[15: 8] :
+                                                                   ((miss_write_word_off == words_filled[1:0]) ? i_mem_rdata[15: 8] :
+                                                                    (victim_way ? datas1[miss_set][miss_write_word_off][15: 8] :
+                                                                                  datas0[miss_set][miss_write_word_off][15: 8]));
+                                    miss_full_write_word[ 7: 0] <= miss_write_mask[0] ? miss_write_data[ 7: 0] :
+                                                                   ((miss_write_word_off == words_filled[1:0]) ? i_mem_rdata[ 7: 0] :
+                                                                    (victim_way ? datas1[miss_set][miss_write_word_off][ 7: 0] :
+                                                                                  datas0[miss_set][miss_write_word_off][ 7: 0]));
                                 end
                                 lru[miss_set] <= !victim_way;
                                 serviced_a_miss <= 1'b1;
