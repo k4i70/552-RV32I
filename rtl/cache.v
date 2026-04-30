@@ -92,9 +92,23 @@ module cache (
         end
     endfunction
 
+    wire [27:0] req_line_addr = i_req_addr[31:4];
+    wire [27:0] prefetch_line_addr = req_line_addr + 28'd1;
+    wire [31:0] prefetch_addr = {prefetch_line_addr, 4'h0};
+    wire [T-1:0] prefetch_tag = prefetch_addr[31:9];
+    wire [S-1:0] prefetch_set = prefetch_addr[8:4];
+    wire [1:0] req_word_off = i_req_addr[3:2];
+    wire prefetch_way0_match = valid[prefetch_set][0] && (tags0[prefetch_set] == prefetch_tag);
+    wire prefetch_way1_match = valid[prefetch_set][1] && (tags1[prefetch_set] == prefetch_tag);
+    wire prefetch_way2_match = valid[prefetch_set][2] && (tags2[prefetch_set] == prefetch_tag);
+    wire prefetch_way3_match = valid[prefetch_set][3] && (tags3[prefetch_set] == prefetch_tag);
+    wire prefetch_hit = prefetch_way0_match || prefetch_way1_match || prefetch_way2_match || prefetch_way3_match;
+    wire request_is_read = i_req_ren && !i_req_wen;
+    wire request_is_prefetch_point = request_is_read && (req_word_off == 2'd3);
+    wire should_start_prefetch = request_is_prefetch_point && !prefetch_hit;
+
     wire [T-1:0] req_tag = i_req_addr[31:9];
     wire [S-1:0] req_set = i_req_addr[8:4];
-    wire [1:0] req_word_off = i_req_addr[3:2];
 
     wire way0_match = valid[req_set][0] && (tags0[req_set] == req_tag);
     wire way1_match = valid[req_set][1] && (tags1[req_set] == req_tag);
@@ -128,6 +142,7 @@ module cache (
     localparam READY = 2'd0;
     localparam MISS_FILL = 2'd1;
     localparam MISS_WB = 2'd2;
+    localparam PREFETCH_FILL = 2'd3;
 
     reg [S-1:0] miss_set;
     reg [T-1:0] miss_tag;
@@ -147,11 +162,13 @@ module cache (
     wire [31:0] mem_req_addr = {miss_tag, miss_set, mem_req_offset};
     wire [31:0] writeback_addr = {miss_tag, miss_set, miss_write_word_off, 2'b00};
 
-    assign o_busy = miss || (state != READY);
+    assign o_busy = (state == MISS_FILL) || (state == MISS_WB) || ((state == PREFETCH_FILL) && miss);
     assign o_mem_addr = (state == MISS_FILL) ? mem_req_addr :
                         (state == MISS_WB) ? writeback_addr :
+                        (state == PREFETCH_FILL) ? mem_req_addr :
                         i_req_addr;
-    assign o_mem_ren = (state == MISS_FILL) && (words_requested < D) && i_mem_ready;
+    assign o_mem_ren = (((state == MISS_FILL) || (state == PREFETCH_FILL)) &&
+                        (words_requested < D) && i_mem_ready && !(hit && i_req_wen));
     assign o_mem_wen = (hit && i_req_wen && i_mem_ready) ||
                        ((state == MISS_WB) && i_mem_ready);
     assign o_mem_wdata = (hit && i_req_wen) ? hit_write_word : miss_write_word_data;
@@ -196,6 +213,21 @@ module cache (
 
                             plru[req_set] <= update_plru(plru[req_set], hit_way);
                             serviced_a_miss <= 1'b0;
+
+                            if (should_start_prefetch) begin
+                                state <= PREFETCH_FILL;
+                                miss_set <= prefetch_set;
+                                miss_tag <= prefetch_tag;
+                                miss_write <= 1'b0;
+                                miss_write_data <= 32'h0;
+                                miss_write_mask <= 4'h0;
+                                miss_write_word_off <= 2'h0;
+                                miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                                miss_write_word_data <= 32'h0;
+                                mem_req_offset <= 4'h0;
+                                words_requested <= 2'h0;
+                                words_filled <= 2'h0;
+                            end
                         end else begin
                             state <= MISS_FILL;
                             miss_set <= req_set;
@@ -253,6 +285,19 @@ module cache (
 
                             if (miss_write) begin
                                 state <= MISS_WB;
+                            end else if (should_start_prefetch) begin
+                                state <= PREFETCH_FILL;
+                                miss_set <= prefetch_set;
+                                miss_tag <= prefetch_tag;
+                                miss_write <= 1'b0;
+                                miss_write_data <= 32'h0;
+                                miss_write_mask <= 4'h0;
+                                miss_write_word_off <= 2'h0;
+                                miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                                miss_write_word_data <= 32'h0;
+                                mem_req_offset <= 4'h0;
+                                words_requested <= 2'h0;
+                                words_filled <= 2'h0;
                             end else begin
                                 state <= READY;
                             end
@@ -262,9 +307,56 @@ module cache (
                     end
                 end
 
+                PREFETCH_FILL: begin
+                    if (words_requested < D && i_mem_ready && !(hit && i_req_wen)) begin
+                        words_requested <= words_requested + 1'b1;
+                        mem_req_offset <= mem_req_offset + 4'h4;
+                    end
+
+                    if (i_mem_valid) begin
+                        fill_word = i_mem_rdata;
+
+                        case (miss_way)
+                            2'd0: datas0[miss_set][words_filled] <= fill_word;
+                            2'd1: datas1[miss_set][words_filled] <= fill_word;
+                            2'd2: datas2[miss_set][words_filled] <= fill_word;
+                            default: datas3[miss_set][words_filled] <= fill_word;
+                        endcase
+
+                        if (words_filled == D - 1) begin
+                            case (miss_way)
+                                2'd0: tags0[miss_set] <= miss_tag;
+                                2'd1: tags1[miss_set] <= miss_tag;
+                                2'd2: tags2[miss_set] <= miss_tag;
+                                default: tags3[miss_set] <= miss_tag;
+                            endcase
+                            valid[miss_set][miss_way] <= 1'b1;
+                            plru[miss_set] <= update_plru(plru[miss_set], miss_way);
+                            state <= READY;
+                        end else begin
+                            words_filled <= words_filled + 1'b1;
+                        end
+                    end
+                end
+
                 MISS_WB: begin
                     if (i_mem_ready) begin
-                        state <= READY;
+                        if (should_start_prefetch) begin
+                            state <= PREFETCH_FILL;
+                            miss_set <= prefetch_set;
+                            miss_tag <= prefetch_tag;
+                            miss_write <= 1'b0;
+                            miss_write_data <= 32'h0;
+                            miss_write_mask <= 4'h0;
+                            miss_write_word_off <= 2'h0;
+                            miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                            miss_write_word_data <= 32'h0;
+                            mem_req_offset <= 4'h0;
+                            words_requested <= 2'h0;
+                            words_filled <= 2'h0;
+                        end else begin
+                            state <= READY;
+                        end
                     end
                 end
 
