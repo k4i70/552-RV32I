@@ -147,8 +147,8 @@ module cache (
     reg [S-1:0] miss_set;
     reg [T-1:0] miss_tag;
     reg [3:0] mem_req_offset;
-    reg signed [31:0] words_requested;
-    reg signed [31:0] words_filled;
+    reg [31:0] words_requested;
+    reg [31:0] words_filled;
     reg miss_write;
     reg [31:0] miss_write_data;
     reg [3:0] miss_write_mask;
@@ -256,7 +256,7 @@ module cache (
 
                     if (i_mem_valid) begin
                         fill_word = i_mem_rdata;
-                        if (miss_write && (words_filled == miss_write_word_off)) begin
+                        if (miss_write && (words_filled == {30'b0, miss_write_word_off})) begin
                             fill_word = merge_masked_word(i_mem_rdata, miss_write_data, miss_write_mask);
                             miss_write_word_data <= fill_word;
                         end
@@ -268,7 +268,7 @@ module cache (
                             default: datas3[miss_set][words_filled] <= fill_word;
                         endcase
 
-                        if (words_filled == req_word_off) begin
+                        if (words_filled == {30'b0, req_word_off}) begin
                             serviced_data <= fill_word;
                         end
 
