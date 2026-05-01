@@ -33,8 +33,8 @@ module cache (
     reg [T - 1:0] tags1 [DEPTH - 1:0];
     reg [T - 1:0] tags2 [DEPTH - 1:0];
     reg [T - 1:0] tags3 [DEPTH - 1:0];
-    reg [3:0] valid [DEPTH - 1:0];
-    reg [2:0] plru [DEPTH - 1:0];
+    reg [3:0] valid [31:0];
+    reg [2:0] plru [31:0];
 
 
 
@@ -192,14 +192,10 @@ module cache (
             serviced_a_miss <= 1'b0;
             serviced_data <= 32'h0;
 
-            valid[0] <= 4'b0000; plru[0] <= 3'b000;
-            valid[1] <= 4'b0000; plru[1] <= 3'b000;
-            valid[2] <= 4'b0000; plru[2] <= 3'b000;
-            valid[3] <= 4'b0000; plru[3] <= 3'b000;
-            valid[4] <= 4'b0000; plru[4] <= 3'b000;
-            valid[5] <= 4'b0000; plru[5] <= 3'b000;
-            valid[6] <= 4'b0000; plru[6] <= 3'b000;
-            valid[7] <= 4'b0000; plru[7] <= 3'b000;
+            for (set_idx = 0; set_idx < 32; set_idx = set_idx + 1) begin
+                valid[set_idx] <= 4'b0000;
+                plru[set_idx] <= 3'b000;
+            end
         end else begin
             case (state)
                 READY: begin
@@ -337,7 +333,7 @@ module cache (
                 end
 
                 PREFETCH_FILL: begin
-                    if (words_requested < 32'd4 && i_mem_ready && !(hit && i_req_wen)) begin
+                    if (words_requested < 32'd4 && i_mem_ready) begin
                         words_requested <= words_requested + 1'b1;
                         mem_req_offset <= mem_req_offset + 4'h4;
                     end
