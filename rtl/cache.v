@@ -20,10 +20,10 @@ module cache (
 );
     localparam O = 4;
     localparam S = 5;
-    localparam DEPTH = 2 ** S;
+    localparam DEPTH = 8;
     localparam W = 4;
-    localparam T = 32 - O - S;
-    localparam D = 2 ** O / 4;
+    localparam T = 23;
+    localparam D = 64;
 
     reg [31:0] datas0 [DEPTH - 1:0][D - 1:0];
     reg [31:0] datas1 [DEPTH - 1:0][D - 1:0];
