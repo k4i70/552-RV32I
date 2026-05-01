@@ -63,19 +63,12 @@ module cache (
         input [3:0] valid_bits;
         input [2:0] plru_bits;
         begin
-            if (!valid_bits[0]) begin
-                choose_victim_way = 2'd0;
-            end else if (!valid_bits[1]) begin
-                choose_victim_way = 2'd1;
-            end else if (!valid_bits[2]) begin
-                choose_victim_way = 2'd2;
-            end else if (!valid_bits[3]) begin
-                choose_victim_way = 2'd3;
-            end else if (!plru_bits[2]) begin
-                choose_victim_way = plru_bits[1] ? 2'd1 : 2'd0;
-            end else begin
-                choose_victim_way = plru_bits[0] ? 2'd3 : 2'd2;
-            end
+            choose_victim_way = !valid_bits[0] ? 2'd0 :
+                                !valid_bits[1] ? 2'd1 :
+                                !valid_bits[2] ? 2'd2 :
+                                !valid_bits[3] ? 2'd3 :
+                                (!plru_bits[2] ? (plru_bits[1] ? 2'd1 : 2'd0)
+                                               : (plru_bits[0] ? 2'd3 : 2'd2));
         end
     endfunction
 
