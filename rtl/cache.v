@@ -192,10 +192,38 @@ module cache (
             serviced_a_miss <= 1'b0;
             serviced_data <= 32'h0;
 
-            for (set_idx = 0; set_idx < 32; set_idx = set_idx + 1) begin
-                valid[set_idx] <= 4'b0000;
-                plru[set_idx] <= 3'b000;
-            end
+            valid[0] <= 4'b0000; plru[0] <= 3'b000;
+            valid[1] <= 4'b0000; plru[1] <= 3'b000;
+            valid[2] <= 4'b0000; plru[2] <= 3'b000;
+            valid[3] <= 4'b0000; plru[3] <= 3'b000;
+            valid[4] <= 4'b0000; plru[4] <= 3'b000;
+            valid[5] <= 4'b0000; plru[5] <= 3'b000;
+            valid[6] <= 4'b0000; plru[6] <= 3'b000;
+            valid[7] <= 4'b0000; plru[7] <= 3'b000;
+            valid[8] <= 4'b0000; plru[8] <= 3'b000;
+            valid[9] <= 4'b0000; plru[9] <= 3'b000;
+            valid[10] <= 4'b0000; plru[10] <= 3'b000;
+            valid[11] <= 4'b0000; plru[11] <= 3'b000;
+            valid[12] <= 4'b0000; plru[12] <= 3'b000;
+            valid[13] <= 4'b0000; plru[13] <= 3'b000;
+            valid[14] <= 4'b0000; plru[14] <= 3'b000;
+            valid[15] <= 4'b0000; plru[15] <= 3'b000;
+            valid[16] <= 4'b0000; plru[16] <= 3'b000;
+            valid[17] <= 4'b0000; plru[17] <= 3'b000;
+            valid[18] <= 4'b0000; plru[18] <= 3'b000;
+            valid[19] <= 4'b0000; plru[19] <= 3'b000;
+            valid[20] <= 4'b0000; plru[20] <= 3'b000;
+            valid[21] <= 4'b0000; plru[21] <= 3'b000;
+            valid[22] <= 4'b0000; plru[22] <= 3'b000;
+            valid[23] <= 4'b0000; plru[23] <= 3'b000;
+            valid[24] <= 4'b0000; plru[24] <= 3'b000;
+            valid[25] <= 4'b0000; plru[25] <= 3'b000;
+            valid[26] <= 4'b0000; plru[26] <= 3'b000;
+            valid[27] <= 4'b0000; plru[27] <= 3'b000;
+            valid[28] <= 4'b0000; plru[28] <= 3'b000;
+            valid[29] <= 4'b0000; plru[29] <= 3'b000;
+            valid[30] <= 4'b0000; plru[30] <= 3'b000;
+            valid[31] <= 4'b0000; plru[31] <= 3'b000;
         end else begin
             case (state)
                 READY: begin
