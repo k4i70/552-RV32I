@@ -147,8 +147,8 @@ module cache (
     reg [S-1:0] miss_set;
     reg [T-1:0] miss_tag;
     reg [3:0] mem_req_offset;
-    reg [1:0] words_requested;
-    reg [1:0] words_filled;
+    reg signed [31:0] words_requested;
+    reg signed [31:0] words_filled;
     reg miss_write;
     reg [31:0] miss_write_data;
     reg [3:0] miss_write_mask;
