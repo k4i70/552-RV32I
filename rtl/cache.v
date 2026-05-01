@@ -36,28 +36,17 @@ module cache (
     reg [3:0] valid [DEPTH - 1:0];
     reg [2:0] plru [DEPTH - 1:0];
 
-    function [31:0] merge_masked_word;
-        input [31:0] old_word;
-        input [31:0] new_word;
-        input [3:0] mask;
-        begin
-            merge_masked_word[31:24] = mask[3] ? new_word[31:24] : old_word[31:24];
-            merge_masked_word[23:16] = mask[2] ? new_word[23:16] : old_word[23:16];
-            merge_masked_word[15: 8] = mask[1] ? new_word[15: 8] : old_word[15: 8];
-            merge_masked_word[ 7: 0] = mask[0] ? new_word[ 7: 0] : old_word[ 7: 0];
-        end
-    endfunction
 
-    function [31:0] mask_word;
-        input [31:0] word;
-        input [3:0] mask;
-        begin
-            mask_word[31:24] = mask[3] ? word[31:24] : 8'h00;
-            mask_word[23:16] = mask[2] ? word[23:16] : 8'h00;
-            mask_word[15: 8] = mask[1] ? word[15: 8] : 8'h00;
-            mask_word[ 7: 0] = mask[0] ? word[ 7: 0] : 8'h00;
-        end
-    endfunction
+
+    // cache_read_data must be declared after hit_way and way*_data are defined
+    reg [31:0] cache_read_data;
+    // ...existing code...
+
+
+    // Inline mask_word and merge_masked_word as combinational logic
+    wire [31:0] masked_read_data;
+    wire [31:0] hit_write_word;
+
 
     function [1:0] choose_victim_way;
         input [3:0] valid_bits;
@@ -113,12 +102,13 @@ module cache (
                          way1_match ? 2'd1 : 2'd0;
     wire miss = (i_req_ren || i_req_wen) && !hit;
 
+
     wire [31:0] way0_data = datas0[req_set][req_word_off];
     wire [31:0] way1_data = datas1[req_set][req_word_off];
     wire [31:0] way2_data = datas2[req_set][req_word_off];
     wire [31:0] way3_data = datas3[req_set][req_word_off];
 
-    reg [31:0] cache_read_data;
+    // Now that hit_way and way*_data are defined, define cache_read_data
     always @* begin
         case (hit_way)
             2'd0: cache_read_data = way0_data;
@@ -128,8 +118,22 @@ module cache (
         endcase
     end
 
-    wire [31:0] masked_read_data = mask_word(cache_read_data, i_req_mask);
-    wire [31:0] hit_write_word = merge_masked_word(cache_read_data, i_req_wdata, i_req_mask);
+    assign masked_read_data = {
+        i_req_mask[3] ? cache_read_data[31:24] : 8'h00,
+        i_req_mask[2] ? cache_read_data[23:16] : 8'h00,
+        i_req_mask[1] ? cache_read_data[15:8]  : 8'h00,
+        i_req_mask[0] ? cache_read_data[7:0]   : 8'h00
+    };
+
+    assign hit_write_word = {
+        i_req_mask[3] ? i_req_wdata[31:24] : cache_read_data[31:24],
+        i_req_mask[2] ? i_req_wdata[23:16] : cache_read_data[23:16],
+        i_req_mask[1] ? i_req_wdata[15:8]  : cache_read_data[15:8],
+        i_req_mask[0] ? i_req_wdata[7:0]   : cache_read_data[7:0]
+    };
+
+    // ...existing code...
+
 
     reg [1:0] state;
     localparam READY = 2'd0;
@@ -186,10 +190,14 @@ module cache (
             serviced_a_miss <= 1'b0;
             serviced_data <= 32'h0;
 
-            for (set_idx = 0; set_idx < DEPTH; set_idx = set_idx + 1) begin
-                valid[set_idx] <= 4'b0000;
-                plru[set_idx] <= 3'b000;
-            end
+            valid[0] <= 4'b0000; plru[0] <= 3'b000;
+            valid[1] <= 4'b0000; plru[1] <= 3'b000;
+            valid[2] <= 4'b0000; plru[2] <= 3'b000;
+            valid[3] <= 4'b0000; plru[3] <= 3'b000;
+            valid[4] <= 4'b0000; plru[4] <= 3'b000;
+            valid[5] <= 4'b0000; plru[5] <= 3'b000;
+            valid[6] <= 4'b0000; plru[6] <= 3'b000;
+            valid[7] <= 4'b0000; plru[7] <= 3'b000;
         end else begin
             case (state)
                 READY: begin
@@ -204,7 +212,10 @@ module cache (
                                 endcase
                             end
 
-                            plru[req_set] <= update_plru(plru[req_set], hit_way);
+                            plru[req_set] <= (hit_way == 2'd0) ? {1'b1, 1'b1, plru[req_set][0]} :
+                                              (hit_way == 2'd1) ? {1'b1, 1'b0, plru[req_set][0]} :
+                                              (hit_way == 2'd2) ? {1'b0, plru[req_set][1], 1'b1} :
+                                                                 {1'b0, plru[req_set][1], 1'b0};
                             serviced_a_miss <= 1'b0;
 
                             if (should_start_prefetch) begin
@@ -215,7 +226,12 @@ module cache (
                                 miss_write_data <= 32'h0;
                                 miss_write_mask <= 4'h0;
                                 miss_write_word_off <= 2'h0;
-                                miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                                miss_way <= !valid[prefetch_set][0] ? 2'd0 :
+                                            !valid[prefetch_set][1] ? 2'd1 :
+                                            !valid[prefetch_set][2] ? 2'd2 :
+                                            !valid[prefetch_set][3] ? 2'd3 :
+                                            (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
+                                                                   : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
                                 miss_write_word_data <= 32'h0;
                                 mem_req_offset <= 4'h0;
                                 words_requested <= 2'h0;
@@ -229,7 +245,12 @@ module cache (
                             miss_write_data <= i_req_wdata;
                             miss_write_mask <= i_req_mask;
                             miss_write_word_off <= req_word_off;
-                            miss_way <= choose_victim_way(valid[req_set], plru[req_set]);
+                            miss_way <= !valid[req_set][0] ? 2'd0 :
+                                        !valid[req_set][1] ? 2'd1 :
+                                        !valid[req_set][2] ? 2'd2 :
+                                        !valid[req_set][3] ? 2'd3 :
+                                        (!plru[req_set][2] ? (plru[req_set][1] ? 2'd1 : 2'd0)
+                                                          : (plru[req_set][0] ? 2'd3 : 2'd2));
                             miss_write_word_data <= 32'h0;
                             mem_req_offset <= 4'h0;
                             words_requested <= 2'h0;
@@ -250,7 +271,12 @@ module cache (
                     if (i_mem_valid) begin
                         fill_word = i_mem_rdata;
                         if (miss_write && (words_filled == {30'b0, miss_write_word_off})) begin
-                            fill_word = merge_masked_word(i_mem_rdata, miss_write_data, miss_write_mask);
+                            fill_word = {
+                                miss_write_mask[3] ? miss_write_data[31:24] : i_mem_rdata[31:24],
+                                miss_write_mask[2] ? miss_write_data[23:16] : i_mem_rdata[23:16],
+                                miss_write_mask[1] ? miss_write_data[15:8]  : i_mem_rdata[15:8],
+                                miss_write_mask[0] ? miss_write_data[7:0]   : i_mem_rdata[7:0]
+                            };
                             miss_write_word_data <= fill_word;
                         end
 
@@ -273,7 +299,10 @@ module cache (
                                 default: tags3[miss_set] <= miss_tag;
                             endcase
                             valid[miss_set][miss_way] <= 1'b1;
-                            plru[miss_set] <= update_plru(plru[miss_set], miss_way);
+                            plru[miss_set] <= (miss_way == 2'd0) ? {1'b1, 1'b1, plru[miss_set][0]} :
+                                               (miss_way == 2'd1) ? {1'b1, 1'b0, plru[miss_set][0]} :
+                                               (miss_way == 2'd2) ? {1'b0, plru[miss_set][1], 1'b1} :
+                                                                  {1'b0, plru[miss_set][1], 1'b0};
                             serviced_a_miss <= 1'b1;
 
                             if (miss_write) begin
@@ -286,7 +315,12 @@ module cache (
                                 miss_write_data <= 32'h0;
                                 miss_write_mask <= 4'h0;
                                 miss_write_word_off <= 2'h0;
-                                miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                                miss_way <= !valid[prefetch_set][0] ? 2'd0 :
+                                            !valid[prefetch_set][1] ? 2'd1 :
+                                            !valid[prefetch_set][2] ? 2'd2 :
+                                            !valid[prefetch_set][3] ? 2'd3 :
+                                            (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
+                                                                   : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
                                 miss_write_word_data <= 32'h0;
                                 mem_req_offset <= 4'h0;
                                 words_requested <= 2'h0;
@@ -324,7 +358,10 @@ module cache (
                                 default: tags3[miss_set] <= miss_tag;
                             endcase
                             valid[miss_set][miss_way] <= 1'b1;
-                            plru[miss_set] <= update_plru(plru[miss_set], miss_way);
+                            plru[miss_set] <= (miss_way == 2'd0) ? {1'b1, 1'b1, plru[miss_set][0]} :
+                                               (miss_way == 2'd1) ? {1'b1, 1'b0, plru[miss_set][0]} :
+                                               (miss_way == 2'd2) ? {1'b0, plru[miss_set][1], 1'b1} :
+                                                                  {1'b0, plru[miss_set][1], 1'b0};
                             state <= READY;
                         end else begin
                             words_filled <= words_filled + 1'b1;
@@ -342,7 +379,12 @@ module cache (
                             miss_write_data <= 32'h0;
                             miss_write_mask <= 4'h0;
                             miss_write_word_off <= 2'h0;
-                            miss_way <= choose_victim_way(valid[prefetch_set], plru[prefetch_set]);
+                            miss_way <= !valid[prefetch_set][0] ? 2'd0 :
+                                        !valid[prefetch_set][1] ? 2'd1 :
+                                        !valid[prefetch_set][2] ? 2'd2 :
+                                        !valid[prefetch_set][3] ? 2'd3 :
+                                        (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
+                                                               : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
                             miss_write_word_data <= 32'h0;
                             mem_req_offset <= 4'h0;
                             words_requested <= 2'h0;
