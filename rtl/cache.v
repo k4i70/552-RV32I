@@ -168,7 +168,7 @@ module cache (
                         (state == PREFETCH_FILL) ? mem_req_addr :
                         i_req_addr;
     assign o_mem_ren = (((state == MISS_FILL) || (state == PREFETCH_FILL)) &&
-                        (words_requested < D) && i_mem_ready && !(hit && i_req_wen));
+                        (words_requested < 32'd4) && i_mem_ready && !(hit && i_req_wen));
     assign o_mem_wen = (hit && i_req_wen && i_mem_ready) ||
                        ((state == MISS_WB) && i_mem_ready);
     assign o_mem_wdata = (hit && i_req_wen) ? hit_write_word : miss_write_word_data;
@@ -249,7 +249,7 @@ module cache (
                 end
 
                 MISS_FILL: begin
-                    if (words_requested < D && i_mem_ready) begin
+                    if (words_requested < 32'd4 && i_mem_ready) begin
                         words_requested <= words_requested + 1'b1;
                         mem_req_offset <= mem_req_offset + 4'h4;
                     end
@@ -272,7 +272,7 @@ module cache (
                             serviced_data <= fill_word;
                         end
 
-                        if (words_filled == D - 1) begin
+                        if (words_filled == 32'd3) begin
                             case (miss_way)
                                 2'd0: tags0[miss_set] <= miss_tag;
                                 2'd1: tags1[miss_set] <= miss_tag;
@@ -308,7 +308,7 @@ module cache (
                 end
 
                 PREFETCH_FILL: begin
-                    if (words_requested < D && i_mem_ready && !(hit && i_req_wen)) begin
+                    if (words_requested < 32'd4 && i_mem_ready && !(hit && i_req_wen)) begin
                         words_requested <= words_requested + 1'b1;
                         mem_req_offset <= mem_req_offset + 4'h4;
                     end
@@ -323,7 +323,7 @@ module cache (
                             default: datas3[miss_set][words_filled] <= fill_word;
                         endcase
 
-                        if (words_filled == D - 1) begin
+                        if (words_filled == 32'd3) begin
                             case (miss_way)
                                 2'd0: tags0[miss_set] <= miss_tag;
                                 2'd1: tags1[miss_set] <= miss_tag;
