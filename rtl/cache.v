@@ -159,13 +159,15 @@ module cache (
     wire [31:0] mem_req_addr = {miss_tag, miss_set, mem_req_offset};
     wire [31:0] writeback_addr = {miss_tag, miss_set, miss_write_word_off, 2'b00};
 
-    assign o_busy = (state == MISS_FILL) || (state == MISS_WB) || ((state == PREFETCH_FILL) && miss);
+    // Busy if not in READY state
+    assign o_busy = (state != READY);
     assign o_mem_addr = (state == MISS_FILL) ? mem_req_addr :
                         (state == MISS_WB) ? writeback_addr :
                         (state == PREFETCH_FILL) ? mem_req_addr :
                         i_req_addr;
+    // Remove !(hit && i_req_wen) from prefetch gating to avoid deadlock
     assign o_mem_ren = (((state == MISS_FILL) || (state == PREFETCH_FILL)) &&
-                        (words_requested < 32'd4) && i_mem_ready && !(hit && i_req_wen));
+                        (words_requested < 32'd4) && i_mem_ready);
     assign o_mem_wen = (hit && i_req_wen && i_mem_ready) ||
                        ((state == MISS_WB) && i_mem_ready);
     assign o_mem_wdata = (hit && i_req_wen) ? hit_write_word : miss_write_word_data;
