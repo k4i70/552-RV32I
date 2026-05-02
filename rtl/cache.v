@@ -170,8 +170,9 @@ module cache (
     wire miss_prefetch_hit = miss_prefetch_way0_match || miss_prefetch_way1_match || miss_prefetch_way2_match || miss_prefetch_way3_match;
     wire miss_should_start_prefetch = !miss_write && (miss_write_word_off == 2'd3) && !miss_prefetch_hit;
 
-    // Busy if not in READY state
-    assign o_busy = (state != READY);
+    // Also report busy on the request cycle that discovers a miss, before the
+    // registered fill state is visible to the pipeline.
+    assign o_busy = (state != READY) || miss;
     assign o_mem_addr = (state == MISS_FILL) ? mem_req_addr :
                         (state == MISS_WB) ? writeback_addr :
                         (state == PREFETCH_FILL) ? mem_req_addr :

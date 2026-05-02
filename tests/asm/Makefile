@@ -1,9 +1,11 @@
 .ONESHELL:
+SHELL := /bin/bash
+.SHELLFLAGS := -eu -o pipefail -c
 PROGRAM ?= add0
 
 
 assemble:
-	docker run --rm -v $(PWD):/src coderkalyan/ece552-tools:latest bash -c "\
+	docker run --rm -v $(CURDIR):/src coderkalyan/ece552-tools:latest bash -c "\
 		cd /src && \
 		riscv64-unknown-elf-as -march=rv32i -mabi=ilp32 $(PROGRAM).asm -o $(PROGRAM).o && \
 		riscv64-unknown-elf-objcopy -O binary -j .text --pad-to=0x400 $(PROGRAM).o $(PROGRAM).hex \
