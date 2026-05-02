@@ -17,7 +17,9 @@ for asm in tests/asm/*.asm; do
 			echo "$p TIMEOUT" | tee -a tb/regression_summary.txt
 		elif grep -q "Program halted after" "tb/out_${p}.txt"; then
 			cycles=$(grep "Program halted after" "tb/out_${p}.txt" | tail -n1 | sed -E 's/.*after[[:space:]]+([0-9]+)[[:space:]]+cycles.*/\1/')
-			echo "$p PASS cycles=$cycles" | tee -a tb/regression_summary.txt
+			retired=$(grep "Total instructions retired:" "tb/out_${p}.txt" | tail -n1 | sed -E 's/.*retired:[[:space:]]+([0-9]+).*/\1/')
+			cpi=$(grep "CPI:" "tb/out_${p}.txt" | tail -n1 | sed -E 's/.*CPI:[[:space:]]+([^[:space:]]+).*/\1/')
+			echo "$p PASS cycles=$cycles retired=$retired CPI=$cpi" | tee -a tb/regression_summary.txt
 		else
 			echo "$p UNKNOWN" | tee -a tb/regression_summary.txt
 		fi

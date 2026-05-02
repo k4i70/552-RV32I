@@ -284,13 +284,51 @@ module hart #(
     // IFID pipeline register
     reg [31:0] FD_i_instr;
     reg [31:0] FD_PC;
+    reg [31:0] FD_pred_next_pc;
+
+	// Branch predictor
+    localparam BP_ENTRIES = 32;
+    localparam BP_INDEX_BITS = 5;
+    reg [31:0] bp_target [0:BP_ENTRIES-1];
+    reg [31:0] bp_tag [0:BP_ENTRIES-1];
+    reg [1:0] bp_counter [0:BP_ENTRIES-1];
+    reg bp_valid [0:BP_ENTRIES-1];
+
+    wire [BP_INDEX_BITS-1:0] bp_fetch_index = fetch_pc[BP_INDEX_BITS+1:2];
+    wire [BP_INDEX_BITS-1:0] bp_decode_index = FD_PC[BP_INDEX_BITS+1:2];
+    wire bp_fetch_hit = bp_valid[bp_fetch_index] && (bp_tag[bp_fetch_index] == fetch_pc);
+    wire bp_fetch_taken = bp_fetch_hit && bp_counter[bp_fetch_index][1];
+
+    wire [31:0] fetch_instr = icache_res_rdata;
+    wire fetch_is_branch = (fetch_instr[6:0] == 7'b1100011);
+    wire fetch_is_jal = (fetch_instr[6:0] == 7'b1101111);
+    wire fetch_is_jalr = (fetch_instr[6:0] == 7'b1100111);
+    wire [31:0] fetch_b_imm = {{19{fetch_instr[31]}}, fetch_instr[31], fetch_instr[7],
+                               fetch_instr[30:25], fetch_instr[11:8], 1'b0};
+    wire [31:0] fetch_j_imm = {{11{fetch_instr[31]}}, fetch_instr[31],
+                               fetch_instr[19:12], fetch_instr[20],
+                               fetch_instr[30:21], 1'b0};
+    wire fetch_static_backward = fetch_is_branch && fetch_b_imm[31];
+    wire fetch_predict_taken = (fetch_is_branch &&
+                                ((bp_fetch_hit && bp_fetch_taken) ||
+                                 (!bp_fetch_hit && fetch_static_backward))) ||
+                               fetch_is_jal;
+    wire [31:0] fetch_pred_target = (bp_fetch_hit && bp_fetch_taken) ? bp_target[bp_fetch_index] :
+                                    fetch_is_jal ? (fetch_pc + fetch_j_imm) :
+                                    (fetch_pc + fetch_b_imm);
+    wire [31:0] fetch_pred_next_pc = (fetch_predict_taken && !fetch_is_jalr) ?
+                                     fetch_pred_target : (fetch_pc + 32'h4);
 
     // Branch res
     wire branch_taken;
     wire [31:0] branch_target;
+    wire [31:0] actual_next_pc;
+    wire redirect_mispredict;
     assign branch_taken = FD_valid && !stall && (jalr_op || (branch_out != 32'h4));
     assign branch_target = jalr_op ? ((branch_rs1_data + immediate) & ~32'h1) : (FD_PC + branch_out);
-    assign next_pc = branch_taken ? branch_target : (fetch_pc + 32'h4);
+    assign actual_next_pc = branch_taken ? branch_target : (FD_PC + 32'h4);
+    assign redirect_mispredict = FD_valid && !stall && (FD_pred_next_pc != actual_next_pc);
+    assign next_pc = redirect_mispredict ? actual_next_pc : fetch_pred_next_pc;
 
     // Instruction memory request protocol for multi-cycle memory (Project 6)
     // Issue request wheneververr memory is ready
@@ -306,12 +344,6 @@ module hart #(
         .o_mem_raddr(fetch_pc)
     );
 
-    // Instruction memory request tracking
-    // Removed for cache
-
-    // Data memory request tracking
-    // Removed for cache
-
     // Load data buffering for multi-cycle memory latency
     always @(posedge i_clk) begin
         if (i_rst) begin
@@ -325,27 +357,58 @@ module hart #(
     end
 
 	// IFID pipeline register. 
+    integer bp_i;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            for (bp_i = 0; bp_i < BP_ENTRIES; bp_i = bp_i + 1) begin
+                bp_valid[bp_i] <= 1'b0;
+                bp_tag[bp_i] <= 32'b0;
+                bp_target[bp_i] <= 32'b0;
+                bp_counter[bp_i] <= 2'b01;
+            end
+        end else if (FD_valid && !stall && pc_src_op) begin
+            bp_valid[bp_decode_index] <= 1'b1;
+            bp_tag[bp_decode_index] <= FD_PC;
+            bp_target[bp_decode_index] <= actual_next_pc;
+            if (jalr_op || branch_op[3]) begin
+                bp_counter[bp_decode_index] <= 2'b11;
+            end else if (branch_taken) begin
+                bp_counter[bp_decode_index] <= (bp_counter[bp_decode_index] == 2'b11) ?
+                                               2'b11 : (bp_counter[bp_decode_index] + 2'b01);
+            end else begin
+                bp_counter[bp_decode_index] <= (bp_counter[bp_decode_index] == 2'b00) ?
+                                               2'b00 : (bp_counter[bp_decode_index] - 2'b01);
+            end
+        end
+    end
+
+	// IFID pipeline register. 
     always @(posedge i_clk) begin
         if (i_rst) begin
             FD_i_instr <= 32'h00000013;
             FD_PC <= RESET_ADDR;
+            FD_pred_next_pc <= RESET_ADDR + 32'h4;
             FD_valid <= 1'b0;
-        end else if (branch_taken) begin
+        end else if (redirect_mispredict) begin
 
             FD_i_instr <= 32'h00000013;
             FD_PC <= 32'b0;
+            FD_pred_next_pc <= 32'b0;
             FD_valid <= 1'b0;
         end else if (stall) begin
             // Keep instruction while stalled
             FD_i_instr <= FD_i_instr;
             FD_PC <= FD_PC;
+            FD_pred_next_pc <= FD_pred_next_pc;
             FD_valid <= FD_valid;
         end else if (!icache_busy) begin
             FD_i_instr <= icache_res_rdata;
             FD_PC <= fetch_pc;
+            FD_pred_next_pc <= fetch_pred_next_pc;
             FD_valid <= 1'b1;
         end else begin
             FD_i_instr <= 32'h00000013;
+            FD_pred_next_pc <= fetch_pc + 32'h4;
             FD_valid <= 1'b0;
         end
     end

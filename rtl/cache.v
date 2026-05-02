@@ -40,8 +40,6 @@ module cache (
 
     // cache_read_data must be declared after hit_way and way*_data are defined
     reg [31:0] cache_read_data;
-    // ...existing code...
-
 
     // Inline mask_word and merge_masked_word as combinational logic
     wire [31:0] masked_read_data;
