@@ -244,7 +244,7 @@ module cache (
                                                                  {1'b0, plru[req_set][1], 1'b0};
                             serviced_a_miss <= 1'b0;
 
-                            if (should_start_prefetch) begin
+                            if (should_start_prefetch && (words_requested == words_filled)) begin
                                 state <= PREFETCH_FILL;
                                 miss_set <= prefetch_set;
                                 miss_tag <= prefetch_tag;
@@ -259,7 +259,7 @@ module cache (
                                             (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
                                                                    : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
                                 miss_write_word_data <= 32'h0;
-                                mem_req_offset <= 4'h0;
+                                mem_req_offset <= 4'hc;
                                 words_requested <= 2'h0;
                                 words_filled <= 2'h0;
                             end
@@ -278,7 +278,7 @@ module cache (
                                         (!plru[req_set][2] ? (plru[req_set][1] ? 2'd1 : 2'd0)
                                                           : (plru[req_set][0] ? 2'd3 : 2'd2));
                             miss_write_word_data <= 32'h0;
-                            mem_req_offset <= 4'h0;
+                            mem_req_offset <= 4'hc;
                             words_requested <= 2'h0;
                             words_filled <= 2'h0;
                             serviced_a_miss <= 1'b0;
@@ -333,7 +333,7 @@ module cache (
 
                             if (miss_write) begin
                                 state <= MISS_WB;
-                            end else if (should_start_prefetch) begin
+                            end else if (should_start_prefetch && (words_requested == words_filled)) begin
                                 state <= PREFETCH_FILL;
                                 miss_set <= prefetch_set;
                                 miss_tag <= prefetch_tag;
@@ -348,7 +348,7 @@ module cache (
                                             (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
                                                                    : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
                                 miss_write_word_data <= 32'h0;
-                                mem_req_offset <= 4'h0;
+                                mem_req_offset <= 4'hc;
                                 words_requested <= 2'h0;
                                 words_filled <= 2'h0;
                             end else begin
@@ -399,8 +399,8 @@ module cache (
                 end
 
                 MISS_WB: begin
-                    if (i_mem_ready) begin
-                        if (should_start_prefetch) begin
+                        if (i_mem_ready) begin
+                        if (should_start_prefetch && (words_requested == words_filled)) begin
                             state <= PREFETCH_FILL;
                             miss_set <= prefetch_set;
                             miss_tag <= prefetch_tag;
