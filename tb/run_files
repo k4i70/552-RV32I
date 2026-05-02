@@ -1,0 +1,20 @@
+#! bin/bash
+cd /home/andrew/Desktop/project-552
+&& iverilog rtl/*.v tb/stall_mem_tb.v -o tb/a.out 
+&& : > tb/regression_summary.txt 
+&& for asm in tests/asm/*.asm; 
+do p=$(basename "$asm" .asm); echo "== $p =="; 
+if make -C tests/asm PROGRAM="$p" assemble > tb/make_${p}.log 2>&1; 
+then (cd tb && ./a.out > out_${p}.txt 2>&1); 
+if grep -q "Program did not halt after 40000 cycles" tb/out_${p}.txt; 
+then echo "$p TIMEOUT" | tee -a tb/regression_summary.txt; 
+elif grep -q "Program halted after" tb/out_${p}.txt; 
+then cycles=$(grep "Program halted after" tb/out_${p}.txt | tail -n1 | sed -E "s/.*after[[:space:]]+([0-9]+)[[:space:]]+cycles.*/\1/"); 
+echo "$p PASS cycles=$cycles" | tee -a tb/regression_summary.txt; 
+else echo "$p UNKNOWN" | tee -a tb/regression_summary.txt; 
+fi; 
+else echo "$p ASSEMBLE_FAIL" | tee -a tb/regression_summary.txt; 
+fi; 
+done; 
+echo "\n=== SUMMARY ==="; 
+cat tb/regression_summary.txt

@@ -158,6 +158,17 @@ module cache (
 
     wire [31:0] mem_req_addr = {miss_tag, miss_set, mem_req_offset};
     wire [31:0] writeback_addr = {miss_tag, miss_set, miss_write_word_off, 2'b00};
+    wire [27:0] miss_line_addr = {miss_tag, miss_set};
+    wire [27:0] miss_prefetch_line_addr = miss_line_addr + 28'd1;
+    wire [31:0] miss_prefetch_addr = {miss_prefetch_line_addr, 4'h0};
+    wire [T-1:0] miss_prefetch_tag = miss_prefetch_addr[31:9];
+    wire [S-1:0] miss_prefetch_set = miss_prefetch_addr[8:4];
+    wire miss_prefetch_way0_match = valid[miss_prefetch_set][0] && (tags0[miss_prefetch_set] == miss_prefetch_tag);
+    wire miss_prefetch_way1_match = valid[miss_prefetch_set][1] && (tags1[miss_prefetch_set] == miss_prefetch_tag);
+    wire miss_prefetch_way2_match = valid[miss_prefetch_set][2] && (tags2[miss_prefetch_set] == miss_prefetch_tag);
+    wire miss_prefetch_way3_match = valid[miss_prefetch_set][3] && (tags3[miss_prefetch_set] == miss_prefetch_tag);
+    wire miss_prefetch_hit = miss_prefetch_way0_match || miss_prefetch_way1_match || miss_prefetch_way2_match || miss_prefetch_way3_match;
+    wire miss_should_start_prefetch = !miss_write && (miss_write_word_off == 2'd3) && !miss_prefetch_hit;
 
     // Busy if not in READY state
     assign o_busy = (state != READY);
@@ -243,26 +254,6 @@ module cache (
                                               (hit_way == 2'd2) ? {1'b0, plru[req_set][1], 1'b1} :
                                                                  {1'b0, plru[req_set][1], 1'b0};
                             serviced_a_miss <= 1'b0;
-
-                            if (should_start_prefetch && (words_requested == words_filled)) begin
-                                state <= PREFETCH_FILL;
-                                miss_set <= prefetch_set;
-                                miss_tag <= prefetch_tag;
-                                miss_write <= 1'b0;
-                                miss_write_data <= 32'h0;
-                                miss_write_mask <= 4'h0;
-                                miss_write_word_off <= 2'h0;
-                                miss_way <= !valid[prefetch_set][0] ? 2'd0 :
-                                            !valid[prefetch_set][1] ? 2'd1 :
-                                            !valid[prefetch_set][2] ? 2'd2 :
-                                            !valid[prefetch_set][3] ? 2'd3 :
-                                            (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
-                                                                   : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
-                                miss_write_word_data <= 32'h0;
-                                mem_req_offset <= 4'hc;
-                                words_requested <= 2'h0;
-                                words_filled <= 2'h0;
-                            end
                         end else begin
                             state <= MISS_FILL;
                             miss_set <= req_set;
@@ -278,7 +269,7 @@ module cache (
                                         (!plru[req_set][2] ? (plru[req_set][1] ? 2'd1 : 2'd0)
                                                           : (plru[req_set][0] ? 2'd3 : 2'd2));
                             miss_write_word_data <= 32'h0;
-                            mem_req_offset <= 4'hc;
+                            mem_req_offset <= 4'h0;
                             words_requested <= 2'h0;
                             words_filled <= 2'h0;
                             serviced_a_miss <= 1'b0;
@@ -313,7 +304,7 @@ module cache (
                             default: datas3[miss_set][words_filled] <= fill_word;
                         endcase
 
-                        if (words_filled == {30'b0, req_word_off}) begin
+                        if (words_filled == {30'b0, miss_write_word_off}) begin
                             serviced_data <= fill_word;
                         end
 
@@ -333,22 +324,22 @@ module cache (
 
                             if (miss_write) begin
                                 state <= MISS_WB;
-                            end else if (should_start_prefetch && (words_requested == words_filled)) begin
+                            end else if (miss_should_start_prefetch && (words_requested == words_filled)) begin
                                 state <= PREFETCH_FILL;
-                                miss_set <= prefetch_set;
-                                miss_tag <= prefetch_tag;
+                                miss_set <= miss_prefetch_set;
+                                miss_tag <= miss_prefetch_tag;
                                 miss_write <= 1'b0;
                                 miss_write_data <= 32'h0;
                                 miss_write_mask <= 4'h0;
                                 miss_write_word_off <= 2'h0;
-                                miss_way <= !valid[prefetch_set][0] ? 2'd0 :
-                                            !valid[prefetch_set][1] ? 2'd1 :
-                                            !valid[prefetch_set][2] ? 2'd2 :
-                                            !valid[prefetch_set][3] ? 2'd3 :
-                                            (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
-                                                                   : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
+                                miss_way <= !valid[miss_prefetch_set][0] ? 2'd0 :
+                                            !valid[miss_prefetch_set][1] ? 2'd1 :
+                                            !valid[miss_prefetch_set][2] ? 2'd2 :
+                                            !valid[miss_prefetch_set][3] ? 2'd3 :
+                                            (!plru[miss_prefetch_set][2] ? (plru[miss_prefetch_set][1] ? 2'd1 : 2'd0)
+                                                                        : (plru[miss_prefetch_set][0] ? 2'd3 : 2'd2));
                                 miss_write_word_data <= 32'h0;
-                                mem_req_offset <= 4'hc;
+                                mem_req_offset <= 4'h0;
                                 words_requested <= 2'h0;
                                 words_filled <= 2'h0;
                             end else begin
@@ -400,20 +391,20 @@ module cache (
 
                 MISS_WB: begin
                         if (i_mem_ready) begin
-                        if (should_start_prefetch && (words_requested == words_filled)) begin
+                        if (miss_should_start_prefetch && (words_requested == words_filled)) begin
                             state <= PREFETCH_FILL;
-                            miss_set <= prefetch_set;
-                            miss_tag <= prefetch_tag;
+                            miss_set <= miss_prefetch_set;
+                            miss_tag <= miss_prefetch_tag;
                             miss_write <= 1'b0;
                             miss_write_data <= 32'h0;
                             miss_write_mask <= 4'h0;
                             miss_write_word_off <= 2'h0;
-                            miss_way <= !valid[prefetch_set][0] ? 2'd0 :
-                                        !valid[prefetch_set][1] ? 2'd1 :
-                                        !valid[prefetch_set][2] ? 2'd2 :
-                                        !valid[prefetch_set][3] ? 2'd3 :
-                                        (!plru[prefetch_set][2] ? (plru[prefetch_set][1] ? 2'd1 : 2'd0)
-                                                               : (plru[prefetch_set][0] ? 2'd3 : 2'd2));
+                            miss_way <= !valid[miss_prefetch_set][0] ? 2'd0 :
+                                        !valid[miss_prefetch_set][1] ? 2'd1 :
+                                        !valid[miss_prefetch_set][2] ? 2'd2 :
+                                        !valid[miss_prefetch_set][3] ? 2'd3 :
+                                        (!plru[miss_prefetch_set][2] ? (plru[miss_prefetch_set][1] ? 2'd1 : 2'd0)
+                                                                    : (plru[miss_prefetch_set][0] ? 2'd3 : 2'd2));
                             miss_write_word_data <= 32'h0;
                             mem_req_offset <= 4'h0;
                             words_requested <= 2'h0;
