@@ -356,22 +356,50 @@ module hart #(
         end
     end
 
-	// IFID pipeline register. 
-    integer bp_i;
+	// Branch predictor state. Reset each valid bit explicitly because the
+    // project synthesis checker rejects procedural for loops.
     always @(posedge i_clk) begin
         if (i_rst) begin
-            for (bp_i = 0; bp_i < BP_ENTRIES; bp_i = bp_i + 1) begin
-                bp_valid[bp_i] <= 1'b0;
-                bp_tag[bp_i] <= 32'b0;
-                bp_target[bp_i] <= 32'b0;
-                bp_counter[bp_i] <= 2'b01;
-            end
+            bp_valid[0] <= 1'b0;
+            bp_valid[1] <= 1'b0;
+            bp_valid[2] <= 1'b0;
+            bp_valid[3] <= 1'b0;
+            bp_valid[4] <= 1'b0;
+            bp_valid[5] <= 1'b0;
+            bp_valid[6] <= 1'b0;
+            bp_valid[7] <= 1'b0;
+            bp_valid[8] <= 1'b0;
+            bp_valid[9] <= 1'b0;
+            bp_valid[10] <= 1'b0;
+            bp_valid[11] <= 1'b0;
+            bp_valid[12] <= 1'b0;
+            bp_valid[13] <= 1'b0;
+            bp_valid[14] <= 1'b0;
+            bp_valid[15] <= 1'b0;
+            bp_valid[16] <= 1'b0;
+            bp_valid[17] <= 1'b0;
+            bp_valid[18] <= 1'b0;
+            bp_valid[19] <= 1'b0;
+            bp_valid[20] <= 1'b0;
+            bp_valid[21] <= 1'b0;
+            bp_valid[22] <= 1'b0;
+            bp_valid[23] <= 1'b0;
+            bp_valid[24] <= 1'b0;
+            bp_valid[25] <= 1'b0;
+            bp_valid[26] <= 1'b0;
+            bp_valid[27] <= 1'b0;
+            bp_valid[28] <= 1'b0;
+            bp_valid[29] <= 1'b0;
+            bp_valid[30] <= 1'b0;
+            bp_valid[31] <= 1'b0;
         end else if (FD_valid && !stall && pc_src_op) begin
             bp_valid[bp_decode_index] <= 1'b1;
             bp_tag[bp_decode_index] <= FD_PC;
             bp_target[bp_decode_index] <= actual_next_pc;
             if (jalr_op || branch_op[3]) begin
                 bp_counter[bp_decode_index] <= 2'b11;
+            end else if (!bp_valid[bp_decode_index]) begin
+                bp_counter[bp_decode_index] <= branch_taken ? 2'b10 : 2'b01;
             end else if (branch_taken) begin
                 bp_counter[bp_decode_index] <= (bp_counter[bp_decode_index] == 2'b11) ?
                                                2'b11 : (bp_counter[bp_decode_index] + 2'b01);
