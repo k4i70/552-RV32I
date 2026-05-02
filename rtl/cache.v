@@ -353,6 +353,9 @@ module cache (
                                 words_filled <= 2'h0;
                             end else begin
                                 state <= READY;
+                                mem_req_offset <= 4'h0;
+                                words_requested <= 32'h0;
+                                                            words_filled <= 32'h0;
                             end
                         end else begin
                             words_filled <= words_filled + 1'b1;
