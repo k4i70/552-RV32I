@@ -22,7 +22,7 @@ module cache (
     localparam S = 4;
     localparam DEPTH = 16;
     localparam W = 4;
-    localparam T = 23;
+    localparam T = 24;
     localparam D = 4;
 
     reg [31:0] datas0 [DEPTH - 1:0][D - 1:0];
@@ -75,8 +75,8 @@ module cache (
     wire [27:0] req_line_addr = i_req_addr[31:4];
     wire [27:0] prefetch_line_addr = req_line_addr + 28'd1;
     wire [31:0] prefetch_addr = {prefetch_line_addr, 4'h0};
-    wire [T-1:0] prefetch_tag = prefetch_addr[31:9];
-    wire [S-1:0] prefetch_set = prefetch_addr[8:4];
+    wire [T-1:0] prefetch_tag = prefetch_addr[31:8];
+    wire [S-1:0] prefetch_set = prefetch_addr[7:4];
     wire [1:0] req_word_off = i_req_addr[3:2];
     wire prefetch_way0_match = valid[prefetch_set][0] && (tags0[prefetch_set] == prefetch_tag);
     wire prefetch_way1_match = valid[prefetch_set][1] && (tags1[prefetch_set] == prefetch_tag);
@@ -87,8 +87,8 @@ module cache (
     wire request_is_prefetch_point = request_is_read && (req_word_off == 2'd3);
     wire should_start_prefetch = request_is_prefetch_point && !prefetch_hit;
 
-    wire [T-1:0] req_tag = i_req_addr[31:9];
-    wire [S-1:0] req_set = i_req_addr[8:4];
+    wire [T-1:0] req_tag = i_req_addr[31:8];
+    wire [S-1:0] req_set = i_req_addr[7:4];
 
     wire way0_match = valid[req_set][0] && (tags0[req_set] == req_tag);
     wire way1_match = valid[req_set][1] && (tags1[req_set] == req_tag);
@@ -159,8 +159,8 @@ module cache (
     wire [27:0] miss_line_addr = {miss_tag, miss_set};
     wire [27:0] miss_prefetch_line_addr = miss_line_addr + 28'd1;
     wire [31:0] miss_prefetch_addr = {miss_prefetch_line_addr, 4'h0};
-    wire [T-1:0] miss_prefetch_tag = miss_prefetch_addr[31:9];
-    wire [S-1:0] miss_prefetch_set = miss_prefetch_addr[8:4];
+    wire [T-1:0] miss_prefetch_tag = miss_prefetch_addr[31:8];
+    wire [S-1:0] miss_prefetch_set = miss_prefetch_addr[7:4];
     wire miss_prefetch_way0_match = valid[miss_prefetch_set][0] && (tags0[miss_prefetch_set] == miss_prefetch_tag);
     wire miss_prefetch_way1_match = valid[miss_prefetch_set][1] && (tags1[miss_prefetch_set] == miss_prefetch_tag);
     wire miss_prefetch_way2_match = valid[miss_prefetch_set][2] && (tags2[miss_prefetch_set] == miss_prefetch_tag);
