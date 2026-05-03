@@ -19,8 +19,8 @@ module cache (
     output wire [31:0] o_res_rdata
 );
     localparam O = 4;
-    localparam S = 5;
-    localparam DEPTH = 32;
+    localparam S = 4;
+    localparam DEPTH = 16;
     localparam W = 4;
     localparam T = 23;
     localparam D = 4;

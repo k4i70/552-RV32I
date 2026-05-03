@@ -1,0 +1,14 @@
+We weren't able to beat the reference CPI, but we did get the 3 other requirements to get a bonus 3%
+
+1. We implemented a prefetcher that fetches the next cache line after it sees that it's attempting to access the last word loaded into the cache line, and fetches the following line.  
+- It also detects read misses on it's own cache, and begins sending out a requrest to the memory on detected misses. 
+
+2. We implemented a 4-way set-associative cache.
+- increases associativity by allowing multiple data words with the same set bits to be stored. 
+- Kept the same cache size by reducing to 16 sets in the cache. 
+- Used a LRU replacment policy by keeping track of the least-recently used address, and only used 3 bits to track. 
+
+3. We implemented a branch predictor that has 64 entries in the prediction table. 
+- Uses a 2-bit counter to store based on past predictions and begins loading those instructions based on the stored target address address also in the table. 
+- Detects and predicts always taken for JAL instructions. 
+
