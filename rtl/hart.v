@@ -287,8 +287,8 @@ module hart #(
     reg [31:0] FD_pred_next_pc;
 
 	// Branch predictor
-    localparam BP_ENTRIES = 32;
-    localparam BP_INDEX_BITS = 5;
+    localparam BP_ENTRIES = 64;
+    localparam BP_INDEX_BITS = 6;
     reg [31:0] bp_target [0:BP_ENTRIES-1];
     reg [31:0] bp_tag [0:BP_ENTRIES-1];
     reg [1:0] bp_counter [0:BP_ENTRIES-1];
@@ -309,14 +309,16 @@ module hart #(
                                fetch_instr[19:12], fetch_instr[20],
                                fetch_instr[30:21], 1'b0};
     wire fetch_static_backward = fetch_is_branch && fetch_b_imm[31];
+    wire fetch_jalr_hit_taken = fetch_is_jalr && bp_fetch_hit && bp_fetch_taken;
     wire fetch_predict_taken = (fetch_is_branch &&
                                 ((bp_fetch_hit && bp_fetch_taken) ||
                                  (!bp_fetch_hit && fetch_static_backward))) ||
-                               fetch_is_jal;
+                               fetch_is_jal ||
+                               fetch_jalr_hit_taken;
     wire [31:0] fetch_pred_target = (bp_fetch_hit && bp_fetch_taken) ? bp_target[bp_fetch_index] :
                                     fetch_is_jal ? (fetch_pc + fetch_j_imm) :
                                     (fetch_pc + fetch_b_imm);
-    wire [31:0] fetch_pred_next_pc = (fetch_predict_taken && !fetch_is_jalr) ?
+    wire [31:0] fetch_pred_next_pc = fetch_predict_taken ?
                                      fetch_pred_target : (fetch_pc + 32'h4);
 
     // Branch res
@@ -392,6 +394,38 @@ module hart #(
             bp_valid[29] <= 1'b0;
             bp_valid[30] <= 1'b0;
             bp_valid[31] <= 1'b0;
+            bp_valid[32] <= 1'b0;
+            bp_valid[33] <= 1'b0;
+            bp_valid[34] <= 1'b0;
+            bp_valid[35] <= 1'b0;
+            bp_valid[36] <= 1'b0;
+            bp_valid[37] <= 1'b0;
+            bp_valid[38] <= 1'b0;
+            bp_valid[39] <= 1'b0;
+            bp_valid[40] <= 1'b0;
+            bp_valid[41] <= 1'b0;
+            bp_valid[42] <= 1'b0;
+            bp_valid[43] <= 1'b0;
+            bp_valid[44] <= 1'b0;
+            bp_valid[45] <= 1'b0;
+            bp_valid[46] <= 1'b0;
+            bp_valid[47] <= 1'b0;
+            bp_valid[48] <= 1'b0;
+            bp_valid[49] <= 1'b0;
+            bp_valid[50] <= 1'b0;
+            bp_valid[51] <= 1'b0;
+            bp_valid[52] <= 1'b0;
+            bp_valid[53] <= 1'b0;
+            bp_valid[54] <= 1'b0;
+            bp_valid[55] <= 1'b0;
+            bp_valid[56] <= 1'b0;
+            bp_valid[57] <= 1'b0;
+            bp_valid[58] <= 1'b0;
+            bp_valid[59] <= 1'b0;
+            bp_valid[60] <= 1'b0;
+            bp_valid[61] <= 1'b0;
+            bp_valid[62] <= 1'b0;
+            bp_valid[63] <= 1'b0;
         end else if (FD_valid && !stall && pc_src_op) begin
             bp_valid[bp_decode_index] <= 1'b1;
             bp_tag[bp_decode_index] <= FD_PC;
